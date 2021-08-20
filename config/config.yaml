@@ -1,0 +1,61 @@
+
+datasets:
+    icsd:
+        hypothetical: False
+        structures_file: "inputs/structures/icsd_structures.json.gz"
+        energies: "inputs/structures/icsd_energies.csv"
+    battery_unrelaxed:
+        hypothetical: True
+        structures_file: "inputs/structures/battery_unrelaxed_structures.json.gz"
+        relaxed_energies: "inputs/structures/battery_relaxed_energies.csv"
+    battery_relaxed:
+        hypothetical: True
+        structures_file: "inputs/structures/battery_relaxed_structures.json.gz"
+        relaxed_energies: "inputs/structures/battery_relaxed_energies.csv"
+    zintl_unrelaxed:
+        hypothetical: True
+        structures_file: "inputs/structures/zintl_unrelaxed_structures.json.gz"
+        relaxed_energies: "inputs/structures/zintl_relaxed_energies.csv"
+    zintl_relaxed:
+        hypothetical: True
+        structures_file: "inputs/structures/zintl_relaxed_structures.json.gz"
+        relaxed_energies: "inputs/structures/zintl_relaxed_energies.csv"
+
+# structure of outputs:
+# <output_dir>/
+#   <dataset_name>/
+#     <evaluation>_<seed>/
+#       train/valid/test splits 
+#       <hyperparameters>/
+#         trained model
+output_dir: "outputs"
+
+# evaluation options:
+# *random_subset* (randsub): leave out a random subset of the structures. Currently hardcoded at 5% for test, 5% for valid
+# *leave_out_comp* (loc): for each composition type, select a composition of the given type 
+#     and leave out all of its structures/decorations 
+# *leave_out_comp_minus_one* (locmo): same as above, but keep a single structure for the left-out composition
+experiments:
+    - datasets: ["icsd", "battery_unrelaxed"]
+      eval_settings:
+          icsd: "random_subset"
+          hypo: "leave_out_comp"
+          # random seed to use for train/valid/test splits
+          seed: 1
+
+
+hyperparameters:
+    # some useful tips for selecting these parameter values:
+    # https://stackoverflow.com/a/49924566/7483950
+    learning_rate: 1E-4
+    # number times that the learning algorithm will work through the entire training dataset
+    epochs: 100
+
+    # Here, we have to add the prediction target padding onto the input padding
+    batch_size: 64   # typical batch sizes= 32, 64, 128, 256 (usually batch size=32 or 64 is optimum)
+    max_sites: 256
+    max_bonds: 2048
+
+    # model_params
+    embed_dimension: 256   # typical embedding dimensions= 32, 64, 128, 256
+    num_messages: 6        # typical number of message passing blocks= 3-6

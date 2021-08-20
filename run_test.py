@@ -8,26 +8,16 @@ import json
 import pickle
 import tensorflow as tf
 import tensorflow_addons as tfa
-import nfp
-from nfp_extensions import RBFExpansion, CifPreprocessor
-
 from pymatgen.core.structure import Structure
 from tqdm import tqdm, trange
-
 import monotonic
 mtime = monotonic.time.time
 t0 = mtime()
 
-def load_structures_from_json(structures_file):
-    print(f"loading {structures_file}")
-    with gzip.open(structures_file, 'r') as f:
-        structures_dict = json.loads(f.read().decode())
+import nfp
+from nfp_extensions import RBFExpansion, CifPreprocessor
+import utils
 
-    structures = {}
-    for key, structure_dict in structures_dict.items():
-        structures[key] = Structure.from_dict(structure_dict)
-    
-    return structures
 
 dataset_name = "icsd_zintl"
 
@@ -54,10 +44,10 @@ print(test_hypo)
 
 # load the icsd and hypothetical datasets
 icsd_structures_file = "inputs/icsd_structures.json.gz"
-icsd_structures = load_structures_from_json(icsd_structures_file)
+icsd_structures = utils.load_structures_from_json(icsd_structures_file)
 
 hypo_structures_file = "inputs/zintl_relaxed_structures.json.gz"
-hypo_structures = load_structures_from_json(hypo_structures_file)
+hypo_structures = utils.load_structures_from_json(hypo_structures_file)
 
 
 icsd_dataset = tf.data.Dataset.from_generator(

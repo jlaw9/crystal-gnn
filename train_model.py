@@ -163,6 +163,7 @@ out = tf.keras.layers.GlobalAveragePooling1D()(atom_state)
 
 model = tf.keras.Model(input_tensors, [out])
 
+# TODO change to the size of the dataset
 STEPS_PER_EPOCH = math.ceil(25633 / batch_size)  # number of training examples
 lr = 1E-4       # too high learning rates can lead to NaN losses 
 lr_schedule = tf.keras.optimizers.schedules.InverseTimeDecay(lr,
