@@ -48,19 +48,23 @@ def load_hypothetical_structures(
     return hypo_df
 
 
-def random_split_df(df, test_size_percentage=.05, random_state=None):
+def random_split_df(df, test_size=.05, random_state=None):
     strc_ids = df.id.unique()
     train, valid, test = random_split(
-        strc_ids, test_size_percentage=test_size_percentage, random_state=random_state)
+        strc_ids, test_size=test_size, random_state=random_state)
     train_df = df[df.id.isin(train)]
     valid_df = df[df.id.isin(valid)]
     test_df = df[df.id.isin(test)]
     return train_df, valid_df, test_df
 
 
-def random_split(structure_ids, test_size_percentage=.05, random_state=None):
-    test_size = len(structure_ids) * test_size_percentage
-    print(f"\tsplitting {len(structure_ids)} structures using test_size: {test_size_percentage} ({test_size})")
+def random_split(structure_ids, test_size=.05, random_state=None):
+    if test_size < 1:
+        test_size_perc = test_size
+        test_size = int(np.floor(len(structure_ids) * test_size))
+    else:
+        test_size_perc = test_size / float(len(structure_ids))
+    print(f"\tsplitting {len(structure_ids)} structures using test_size: {test_size_perc} ({test_size})")
     train, test  = train_test_split(structure_ids, test_size=test_size, random_state=random_state)
     train, valid = train_test_split(train, test_size=test_size, random_state=random_state)
     return train, valid, test
