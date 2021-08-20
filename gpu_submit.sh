@@ -1,13 +1,17 @@
 #!/bin/bash
 #SBATCH --account=rlmolecule
-#SBATCH --time=2-00
-#SBATCH --job-name=crystal_gnn
+#SBATCH --time=10:00:00
+#SBATCH --job-name=test-crystals
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:2
-#SBATCH --output=/scratch/pstjohn/gpu.%j.out
+#SBATCH -o log.out
+#SBATCH -e err.out
+#SBATCH --mail-user=jlaw@nrel.gov
+#SBATCH --mail-type=END
 
 source ~/.bashrc
-module load cudnn/7.4.2/cuda-10.0
-conda activate /projects/rlmolecule/pstjohn/envs/tf2_gpu
+module load cudnn/8.1.1/cuda-11.2
+#conda activate crystals
+conda activate ~/.conda-envs/rlmol
 
-srun python train_model_mp.py
+srun python train_model.py

@@ -16,36 +16,39 @@ tqdm.pandas()
 
       
 if __name__ == '__main__':
+    base_dir = "/projects/rlmolecule/shubham/file_transfer/decorations/relaxed"
+    # type of hypothetical structures we're working with
+    hypo_type = "zintl"
+    dataset_name = f"icsd_{hypo_type}" 
+    icsd_structures_file = f"{base_dir}/icsd/icsd_energies.csv"
+    hypothetical_structures_file = f"{base_dir}/{hypo_type}_hypotheticals/relaxed_energies.csv"
         
     # Read energy data
-    icsd = pd.read_csv('/projects/rlmolecule/shubham/cgcnn/crystal-gnn/matdb_data/clean_data/batteries/nrel_16488.csv')
-    sp   = pd.read_csv('/projects/rlmolecule/shubham/cgcnn/crystal-gnn/matdb_data/clean_data/batteries/relaxed_structures_sp.csv')
-    pg   = pd.read_csv('/projects/rlmolecule/shubham/cgcnn/crystal-gnn/matdb_data/clean_data/batteries/relaxed_structures_pg.csv')
-
+    icsd_df = pd.read_csv(icsd_structures_file)
+    hypo_df = pd.read_csv(hypothetical_structures_file)
     
     # So pymatgen doesn't want to take the ISO-8859-1 cifs in the tarball, I have to 
     # re-encode as utf-8 using the following command:
     # for file in *; do iconv -f ISO-8859-1 -t UTF-8 < $file > "../utf8_cifs/$file"; done
 
-    # path to ICSD cifs files, shubham structures (sp), prahsun structures (pg)
-    cif_icsd = lambda x: '/projects/rlmolecule/shubham/cgcnn/crystal-gnn/matdb_data/clean_data/nrel_jiaxing/utf8_cifs/{}.cif'.format(x)
-    cif_sp = lambda x,y,z: '/scratch/shubhampandey/ARPA-E/battery_decorations/relaxed/{}/{}/{}/CONTCAR'.format(x,y,z)
-    cif_pg = lambda x,y,z: '/scratch/pgorai/decoration-relax/relaxed/{}/{}/{}/CONTCAR'.format(x,y,z)
+    # path to ICSD cifs files 
+    cif_icsd_filepath = lambda x: os.path.join(base_dir, 'icsd/structures/{}.cif'.format(x))
 
+    # path to relaxed hypothetical structures
+    relax_hypo_filepath = lambda x: os.path.join(base_dir, f'{hypo_type}_hypotheticals', 'relaxed_original/POSCAR_{}'.format(x))
+ 
+    # path to unrelaxed hypothetical structures
+    unrelax_hypo_filepath = lambda x: os.path.join(base_dir, f'{hypo_type}_hypotheticals', 'unrelaxed_original/POSCAR_{}'.format(x))
 
+    
     # check if structures corresponding to all 'id' exists
-    icsd_exists = lambda x: os.path.exists(cif_icsd(x))
-    icsd['cif_exists'] = icsd.id.apply(icsd_exists)
-    icsd = icsd[icsd.cif_exists]
+    #icsd_exists = lambda x: os.path.exists(cif_icsd_filepath(x))
+    #icsd['cif_exists'] = icsd.id.apply(icsd_exists)
+    #icsd = icsd[icsd.cif_exists]
          
-    sp_exists = lambda x,y,z: os.path.exists(cif_sp(x,y,z))
-    sp['cif_exists'] = sp[['comp_type','composition','id']].apply(lambda row: sp_exists(row['comp_type'], row['composition'],row['id']) , axis=1)
-    sp = sp[sp.cif_exists]
-
-    pg_exists = lambda x,y,z: os.path.exists(cif_pg(x,y,z))
-    pg['cif_exists'] = pg[['comp_type','composition','id']].apply(lambda row: pg_exists(row['comp_type'], row['composition'],row['id']) , axis=1)
-    pg = pg[pg.cif_exists]
-
+    #zintl_exists = lambda x: os.path.exists(relax_hypo_filepath(x))
+    #hypo_df['cif_exists'] = hypo_df.id.apply(zintl_exists)
+    #hypo_df = hypo_df[hypo_df.cif_exists]    
     
     # Drop ICSDs with fractional occupation
     #to_drop = pd.read_csv('icsd_fracoccupation.csv', header=None)[0]\
@@ -53,93 +56,79 @@ if __name__ == '__main__':
     #data = data[~data.icsdnum.isin(to_drop)]
 
     # Try to parse ICSD crystals with pymatgen
-    def get_icsd(id):
+    def get_icsd_strc(strc_id):
         try:
-            return Structure.from_file(cif_icsd(id), primitive=True)
-        except Exception:
-            return None
-
-    # Try to parse sp crystals with pymatgen
-    def get_sp(ctype,comp,str_id):
-        try:
-            return Structure.from_file(cif_sp(ctype,comp,str_id), primitive=True)
+            struc = Structure.from_file(cif_icsd_filepath(strc_id), primitive=True)
+            #struc.lattice = struc.lattice.cubic(1.0)                  # cubic lattice with a=b=c=1
+            #struc.lattice = struc.lattice.tetragonal(1.0,3.0)         # tetragonal lattice with a=b=1,c=3
+            #struc.lattice = struc.lattice.orthorhombic(1.0,2.0,3.0)   # orthorhombic lattice with a=1,b=2,c=3
+            return struc
         except Exception:
             return None
 
 
     # Try to parse pg crystals with pymatgen
-    def get_pg(ctype,comp,str_id):
+    def get_hypo_strc(strc_id):
         try:
-            return Structure.from_file(cif_pg(ctype,comp,str_id), primitive=True)
+            struc = Structure.from_file(relax_hypo_filepath(strc_id), primitive=True)
+            #struc.lattice = struc.lattice.cubic(1.0)                  # cubic lattice with a=b=c=1
+            #struc.lattice = struc.lattice.tetragonal(1.0,3.0)         # tetragonal lattice with a=b=1,c=3
+            #struc.lattice = struc.lattice.orthorhombic(1.0,2.0,3.0)   # orthorhombic lattice with a=1,b=2,c=3
+            return struc
         except Exception:
             return None
 
     
     # record ICSD structures as a column
+    print(f"Reading ICSD structures from {cif_icsd_filepath('*')}")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        icsd['crystal'] = icsd.id.progress_apply(get_icsd)
+        icsd_df['crystal'] = icsd_df.id.progress_apply(get_icsd_strc)
 
 
-    # record sp structures as a column
+    # record hypothetical structures as a column
+    print(f"Reading hypothetical {hypo_type} structures from {relax_hypo_filepath('*')}")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sp['crystal'] = sp[['comp_type','composition','id']].progress_apply(lambda row: get_sp(row['comp_type'], row['composition'],row['id']) , axis=1)
-
-
-    # record pg structures as a column
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        pg['crystal'] = pg[['comp_type','composition','id']].progress_apply(lambda row: get_pg(row['comp_type'], row['composition'],row['id']) , axis=1)
-    
+        hypo_df['crystal'] = hypo_df.id.progress_apply(get_hypo_strc)
 
     # record parse issues
-    icsd[icsd.crystal.isna()]['id'].to_csv('problems_icsd.csv')
+    icsd_df[icsd_df.crystal.isna()]['id'].to_csv('problems_icsd.csv')
         
     # record parse issues
-    sp[sp.crystal.isna()]['id'].to_csv('problems_sp.csv')
-
-    # record parse issues
-    pg[pg.crystal.isna()]['id'].to_csv('problems_pg.csv')
+    hypo_df[hypo_df.crystal.isna()]['id'].to_csv('problems_hypo.csv')
 
 
-    icsd = icsd.dropna(subset=['crystal'])
-    sp   = sp.dropna(subset=['crystal'])
-    pg   = pg.dropna(subset=['crystal'])
-    print(f'{len(icsd),len(sp),len(pg)} icsd,sp,pg crystals after down-selection')
+    icsd_df = icsd_df.dropna(subset=['crystal'])
+    hypo_df = hypo_df.dropna(subset=['crystal'])
+    print(f'{len(icsd_df),len(hypo_df)} icsd, hypothetical crystals after down-selection')
   
-    # combine sp and pg
-    hypo = sp.append(pg).reset_index(drop=True)
     
     # Split the icsd data into training and test sets
-    train_icsd, test_icsd  = train_test_split(icsd.id.unique(), test_size=500, random_state=1)
+    train_icsd, test_icsd  = train_test_split(icsd_df.id.unique(), test_size=500, random_state=1)
     train_icsd, valid_icsd = train_test_split(train_icsd, test_size=500, random_state=1)
 
-    '''
-    # Split the hypothetical data into training and test sets
-    train_hypo, valid_hypo = train_test_split(hypo.composition.unique(), test_size=20, random_state=1)
-    train_hypo, test_hypo  = train_test_split(train_hypo, test_size=20, random_state=1)
-    '''  
-    
+
     # Split the hypothetical data into training and test sets, such that test/valid sets have one composition per comp_type
-    valid_hypo = hypo.groupby("comp_type").sample(n=1, random_state=1)    
-    train_hypo = hypo[~hypo.composition.isin(valid_hypo.composition)]
+    valid_hypo = hypo_df.groupby("comp_type").sample(n=1, random_state=1)
+    train_hypo = hypo_df[~hypo_df.composition.isin(valid_hypo.composition)]
     test_hypo  = train_hypo.groupby("comp_type").sample(n=1, random_state=1)
     train_hypo = train_hypo[~train_hypo.composition.isin(test_hypo.composition)]
 
+
     # merge train, valid, test sets from icsd and hypo data above
-    icsd_train = icsd[icsd.id.isin(train_icsd)]
+    icsd_train = icsd_df[icsd_df.id.isin(train_icsd)]
     train      = icsd_train.append(train_hypo)
 
-    icsd_valid = icsd[icsd.id.isin(valid_icsd)]
-    hypo_valid = hypo[hypo.composition.isin(valid_hypo.composition)]
+    icsd_valid = icsd_df[icsd_df.id.isin(valid_icsd)]
+    hypo_valid = hypo_df[hypo_df.composition.isin(valid_hypo.composition)]
     valid      = icsd_valid.append(hypo_valid)
 
-    icsd_test  = icsd[icsd.id.isin(test_icsd)]
-    hypo_test  = hypo[hypo.composition.isin(test_hypo.composition)]
+    icsd_test  = icsd_df[icsd_df.id.isin(test_icsd)]
+    hypo_test  = hypo_df[hypo_df.composition.isin(test_hypo.composition)]
     test       = icsd_test.append(hypo_test)
 
-
+         
     # Initialize the preprocessor class.
     preprocessor = CifPreprocessor(num_neighbors=12)
 
@@ -152,7 +141,14 @@ if __name__ == '__main__':
         for i, row in tqdm(df.iterrows(), total=len(df)):
             input_dict = preprocessor.construct_feature_matrices(row.crystal, train=train)
             input_dict['energyperatom'] = float(row.energyperatom)
-
+            #input_dict['a'] = float(row.a)
+            #input_dict['b'] = float(row.b)
+            #input_dict['c'] = float(row.c)
+            #input_dict['alpha'] = float(row.alpha)
+            #input_dict['beta'] = float(row.beta)
+            #input_dict['gamma'] = float(row.gamma)
+            #input_dict['vol_atom'] = float(row.vol_atom)
+           
             features = {key: nfp.serialize_value(val) for key, val in input_dict.items()}
             example_proto = tf.train.Example(features=tf.train.Features(feature=features))
 
@@ -163,32 +159,32 @@ if __name__ == '__main__':
         lambda: inputs_generator(train, train=True),
         output_types=tf.string, output_shapes=())
 
-    os.mkdir('tfrecords_nrel500_hypo58')
-    dir = 'tfrecords_nrel500_hypo58'
+    out_dir = f'tfrecords_{dataset_name}'
+    os.mkdir(out_dir)
      
-    filename = dir + '/train.tfrecord.gz'
+    filename = os.path.join(out_dir, 'train.tfrecord.gz')
     writer = tf.data.experimental.TFRecordWriter(filename, compression_type='GZIP')
     writer.write(serialized_train_dataset)
     
     # Save the preprocessor data
-    preprocessor.to_json(dir + '/preprocessor.json')
+    preprocessor.to_json(os.path.join(out_dir, 'preprocessor.json'))
 
     # Process the validation data
     serialized_valid_dataset = tf.data.Dataset.from_generator(
         lambda: inputs_generator(valid, train=False),
         output_types=tf.string, output_shapes=())
 
-    filename = dir + '/valid.tfrecord.gz'
+    filename = os.path.join(out_dir, 'valid.tfrecord.gz')
     writer = tf.data.experimental.TFRecordWriter(filename, compression_type='GZIP')
     writer.write(serialized_valid_dataset)
     
     # Save train, valid, and test datasets
     train[
         ['comp_type','composition', 'id', 'energyperatom']].to_csv(
-        dir+'/train.csv.gz', compression='gzip', index=False)
+        os.path.join(out_dir, 'train.csv.gz'), compression='gzip', index=False)
     valid[
         ['comp_type','composition', 'id', 'energyperatom']].to_csv(
-        dir+'/valid.csv.gz', compression='gzip', index=False)
+        os.path.join(out_dir, 'valid.csv.gz'), compression='gzip', index=False)
     test[
         ['comp_type','composition', 'id', 'energyperatom']].to_csv(
-        dir+'/test.csv.gz', compression='gzip', index=False)
+        os.path.join(out_dir, 'test.csv.gz'), compression='gzip', index=False)
