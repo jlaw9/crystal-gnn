@@ -207,7 +207,7 @@ def main(config_map, forced=False):
 
     # Process the training data, and write the resulting outputs to a tfrecord file
     serialized_train_dataset = tf.data.Dataset.from_generator(
-        lambda: inputs_generator(train, train=True),
+        lambda: inputs_generator(train_df, train=True),
         output_types=tf.string, output_shapes=())
 
     print(f"Writing train/valid/test splits to: {out_dir}")
@@ -222,7 +222,7 @@ def main(config_map, forced=False):
 
     # Process the validation data
     serialized_valid_dataset = tf.data.Dataset.from_generator(
-        lambda: inputs_generator(valid, train=False),
+        lambda: inputs_generator(valid_df, train=False),
         output_types=tf.string, output_shapes=())
 
     filename = os.path.join(out_dir, 'valid.tfrecord.gz')
@@ -230,9 +230,9 @@ def main(config_map, forced=False):
     writer.write(serialized_valid_dataset)
     
     # Save train, valid, and test datasets
-    for split, split_name in [(train, 'train'),
-                              (valid, 'valid'),
-                              (test, 'test')]:
+    for split, split_name in [(train_df, 'train'),
+                              (valid_df, 'valid'),
+                              (test_df, 'test')]:
         split[['comp_type','composition', 'id', 'energyperatom']].to_csv(
             os.path.join(out_dir, f'{split_name}.csv.gz'), compression='gzip', index=False)
 
