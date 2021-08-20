@@ -29,7 +29,7 @@ def load_icsd(icsd_energies_file, icsd_structures_file):
         #struc.lattice = struc.lattice.orthorhombic(1.0,2.0,3.0)   # orthorhombic lattice with a=1,b=2,c=3
         return struc
 
-    icsd_df['crystal'] = icsd_df.id.progress_apply(get_strc)
+    icsd_df['crystal'] = icsd_df.id.apply(get_strc)
 
     return icsd_df
 
@@ -43,7 +43,7 @@ def load_hypothetical_structures(
         struc = structures.get(strc_id)
         return struc
 
-    hypo_df['crystal'] = hypo_df.id.progress_apply(get_strc)
+    hypo_df['crystal'] = hypo_df.id.apply(get_strc)
 
     return hypo_df
 
@@ -68,29 +68,86 @@ def random_split(structure_ids, test_size_percentage=.05, random_state=None):
 
 def leave_out_comp(df, random_state=None):
     # Split the hypothetical data into training and test sets, such that test/valid sets have one composition per comp_type
-    valid = df.groupby("comp_type").sample(n=1, random_state=random_state)
-    train = df[~df.composition.isin(valid.composition)]
-    test  = train.groupby("comp_type").sample(n=1, random_state=random_state)
-    train = train[~train.composition.isin(test.composition)]
+    valid_comp = df.groupby("comp_type").sample(n=1, random_state=random_state).composition
+    train = df[~df.composition.isin(valid_comp)]
+    test_comp  = train.groupby("comp_type").sample(n=1, random_state=random_state).composition
+    train = train[~train.composition.isin(test_comp)]
+
+    valid = df[df.composition.isin(valid_comp)]
+    test = df[df.composition.isin(test_comp)]
+    print(f"leave_out_comp: # valid compositions: {len(valid_comp)}, # test comps: {len(test_comp)}")
     return train, valid, test
 
 
-def main(config_map):
+eval_names = {
+    'random_subset': 'random_subset',
+    'leave_out_comp': 'loc',
+    'leave_out_comp_minus_one': 'loc1',
+}
+
+def get_eval_str(experiment):
+    eval_settings = experiment['eval_settings']
+    dataset_types = set()
+    for dataset_name in experiment['datasets']:
+        dataset = config_map['datasets'][dataset_name]
+        if dataset['hypothetical'] is True:
+            dataset_types.add('hypo')
+        else:
+            dataset_types.add('icsd')
+
+    eval_strs = []
+    for dataset_type in sorted(dataset_types):
+        eval_type = eval_settings.get(dataset_type, 'random_subset')
+        eval_str = f"{dataset_type}_{eval_names.get(eval_type, eval_type)}"
+        eval_strs.append(eval_str)
+    full_eval_str = "_".join(eval_strs)
+
+    rand_seed = eval_settings.get("seed")
+    full_eval_str += "_seed" + str(rand_seed) if rand_seed is not None else ""
+    return full_eval_str
+
+
+def get_out_dir(experiment, base_output_dir="outputs"):
+    # structure of outputs:
+    # <base_output_dir>/
+    #   <dataset_name>/
+    #     <evaluation>_<seed>/
+    #       train/valid/test splits
+    #       <hyperparameters>/
+    #         trained model
+    dataset_names = '_'.join(experiment['datasets'])
+    eval_str = get_eval_str(experiment)
+
+    out_dir = os.path.join(base_output_dir, dataset_names, eval_str)
+    return out_dir
+
+
+def main(config_map, forced=False):
     for experiment in config_map['experiments']:
+        # first check if these files have already been written. If so, then skip
+        out_dir = get_out_dir(experiment, base_output_dir=config_map['output_dir'])
+        test_file = os.path.join(out_dir, 'test.csv.gz')
+        if not forced and os.path.isfile(test_file):
+            print(f"Input files already exist for {out_dir}. Use --forced to overwrite (TODO)")
+            continue
+
         hypo_df = pd.DataFrame()
         icsd_df = pd.DataFrame()
-        dataset_names = '-'.join(experiment['datasets'])
         for dataset_name in experiment['datasets']:
             dataset = config_map['datasets'][dataset_name]
             if dataset['hypothetical'] is True:
-                curr_hypo_df = load_hypothetical_structures(
+                curr_df = load_hypothetical_structures(
                     dataset['relaxed_energies'], dataset['structures_file'])
-                hypo_df = pd.concat([hypo_df, curr_hypo_df])
+                df = pd.concat([df, curr_df])
             else:
                 # treat this as an ICSD dataset
-                curr_icsd_df = load_icsd(
+                curr_df = load_icsd(
                     dataset['energies'], dataset['structures_file'])
-                icsd_df = pd.concat([icsd_df, curr_icsd_df])
+                df = pd.concat([df, curr_df])
+
+            nan_ids = curr_df[curr_df.crystal.isna()]['id'].values
+            if len(nan_ids) > 0:
+                print(f"\t{len(nan_ids)} missing ids: {str(nan_ids)}")
 
         eval_settings = experiment['eval_settings']
         random_state = eval_settings.get('seed')
@@ -101,30 +158,23 @@ def main(config_map):
         train_df = pd.DataFrame()
         valid_df = pd.DataFrame()
         test_df = pd.DataFrame()
-        eval_strs = []
         for df, dataset_type in [(icsd_df, 'icsd'), (hypo_df, 'hypo')]:
             if len(df) == 0:
                 continue
             eval_type = eval_settings.get(dataset_type, 'random_subset')
             print(f"Making splits for {dataset_type} using '{eval_type}'")
             if eval_type == "random_subset":
-                eval_str = f"{dataset_type}_{eval_type}"
                 train, valid, test = random_split_df(df, random_state=random_state)
                 #icsd_train, icsd_valid, icsd_test = random_split(icsd_ids, random_state=random_state)
             elif eval_type == "leave_out_comp":
-                eval_str = f"{dataset_type}_loc"
                 train, valid, test = leave_out_comp(df, random_state=random_state)
             elif eval_type == "leave_out_comp_minus_one":
-                eval_str = f"{dataset_type}_loc-1"
                 sys.exit(f"{eval_type} not yet implemented. Quitting")
 
             print(f"# train: {len(train)}, # valid: {len(valid)}, # test: {len(test)}")
             train_df = pd.concat([train_df, train])
             valid_df = pd.concat([valid_df, valid])
             test_df = pd.concat([test_df, test])
-            eval_strs.append(eval_str)
-
-        full_eval_str = "-".join(eval_strs)
 
     # Initialize the preprocessor class.
     preprocessor = CifPreprocessor(num_neighbors=12)
@@ -156,14 +206,6 @@ def main(config_map):
         lambda: inputs_generator(train, train=True),
         output_types=tf.string, output_shapes=())
 
-    # structure of outputs:
-    # <output_dir>/
-    #   <dataset_name>/
-    #     <evaluation>_<seed>/
-    #       train/valid/test splits
-    #       <hyperparameters>/
-    #         trained model
-    out_dir = os.path.join(config_map['output_dir'], dataset_names, full_eval_str)
     print(f"Writing train/valid/test splits to: {out_dir}")
     os.makedirs(out_dir, exist_ok=True)
      
