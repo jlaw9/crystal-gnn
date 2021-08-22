@@ -30,18 +30,39 @@ datasets:
 #         trained model
 output_dir: "outputs"
 
-# evaluation options:
-# *random_subset* (randsub): leave out a random subset of the structures. Currently hardcoded at 5% for test, 5% for valid
-# *leave_out_comp* (loc): for each composition type, select a composition of the given type 
-#     and leave out all of its structures/decorations 
-# *leave_out_comp_minus_one* (locmo): same as above, but keep a single structure for the left-out composition
+# Eval_settings:
+# Holdout strategy: 
+#    *random_subset* (randsub): leave out a random subset of the structures. Currently hardcoded at 5% for test, 5% for valid
+#    *leave_out_comp* (loc): for each composition type, select a composition of the given type 
+#         and leave out all of its structures/decorations 
+#    *leave_out_comp_minus_one* (loc-1): same as above, but keep a single structure for the left-out composition
+# *[icsd/hypo]_lattice*: lattice to use for structures when training and testing
+#     *orig*: original lattice
+#     *cubic*: transform to a cubic lattice
+#     *orig_and_cubic*: use both the original and cubic lattice
+# *seed*: random seed to use for train/valid/test splits
+# Note that multiple options may be specified and all combinations will be run
+#     The example below will run 10 experiments
+#     e.g., hypo: [random_subset: 0.05, "leave_out_comp"]
+#     e.g., seed: [1,2,3,4,5]
 experiments:
+    - datasets: ["icsd", "zintl_unrelaxed"]
+      eval_settings:
+          icsd_lattice: ['orig']
+          hypo_lattice: ['cubic']
+          icsd: [random_subset: 0.05]
+          hypo: ["leave_out_comp"]
+          # random seed to use for train/valid/test splits
+          seed: [1]
+
     - datasets: ["icsd", "battery_unrelaxed"]
       eval_settings:
-          icsd: "random_subset"
-          hypo: "leave_out_comp"
+          icsd_lattice: ['orig']
+          hypo_lattice: ['orig', 'cubic']
+          icsd: [random_subset: 0.05]
+          hypo: [random_subset: 0.05, "leave_out_comp"]
           # random seed to use for train/valid/test splits
-          seed: 1
+          seed: [1,2,3]
 
 
 hyperparameters:

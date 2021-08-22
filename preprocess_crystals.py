@@ -83,102 +83,99 @@ def leave_out_comp(df, random_state=None):
     return train, valid, test
 
 
-eval_names = {
-    'random_subset': 'random_subset',
-    'leave_out_comp': 'loc',
-    'leave_out_comp_minus_one': 'loc1',
-}
-
-def get_eval_str(experiment):
-    eval_settings = experiment['eval_settings']
-    dataset_types = set()
+# cache of the previously loaded datasets
+loaded_datasets = {}
+def load_datasets(config_map, experiment):
+    hypo_df = pd.DataFrame()
+    icsd_df = pd.DataFrame()
     for dataset_name in experiment['datasets']:
         dataset = config_map['datasets'][dataset_name]
+        curr_df = loaded_datasets.get(dataset_name)
         if dataset['hypothetical'] is True:
-            dataset_types.add('hypo')
+            if curr_df is None:
+                curr_df = load_hypothetical_structures(
+                    dataset['relaxed_energies'], dataset['structures_file'])
+            hypo_df = pd.concat([hypo_df, curr_df])
         else:
-            dataset_types.add('icsd')
+            # treat this as an ICSD dataset
+            if curr_df is None:
+                curr_df = load_icsd(
+                    dataset['energies'], dataset['structures_file'])
+            icsd_df = pd.concat([icsd_df, curr_df])
 
-    eval_strs = []
-    for dataset_type in sorted(dataset_types):
-        eval_type = eval_settings.get(dataset_type, 'random_subset')
-        eval_str = f"{dataset_type}_{eval_names.get(eval_type, eval_type)}"
-        eval_strs.append(eval_str)
-    full_eval_str = "_".join(eval_strs)
+        loaded_datasets[dataset_name] = curr_df
+        nan_ids = curr_df[curr_df.crystal.isna()]['id'].values
+        if len(nan_ids) > 0:
+            print(f"\t{len(nan_ids)} missing ids: {str(nan_ids)}")
 
-    rand_seed = eval_settings.get("seed")
-    full_eval_str += "_seed" + str(rand_seed) if rand_seed is not None else ""
-    return full_eval_str
+    def apply_cubic(struc):
+        struc.lattice = struc.lattice.cubic(1.0)
+        return struc
 
+    # transform the structures to a different lattice if specified
+    icsd_lattice = experiment['eval_settings'].get('icsd_lattice', 'orig')
+    hypo_lattice = experiment['eval_settings'].get('hypo_lattice', 'orig')
+    for latt in [icsd_lattice, hypo_lattice]:
+        if latt not in ['orig', 'cubic']:
+            sys.exit(f"lattice: '{latt}' not yet implemented. Quitting")
 
-def get_out_dir(experiment, base_output_dir="outputs"):
-    # structure of outputs:
-    # <base_output_dir>/
-    #   <dataset_name>/
-    #     <evaluation>_<seed>/
-    #       train/valid/test splits
-    #       <hyperparameters>/
-    #         trained model
-    dataset_names = '_'.join(experiment['datasets'])
-    eval_str = get_eval_str(experiment)
+    if icsd_lattice == 'cubic':
+        print(f"\tconverting ICSD structures to '{icsd_lattice}'")
+        icsd_df['crystal'] = icsd_df['crystal'].apply(apply_cubic)
+    if hypo_lattice == 'cubic':
+        print(f"\tconverting hypothetical structures to '{hypo_lattice}'")
+        hypo_df['crystal'] = hypo_df['crystal'].apply(apply_cubic)
 
-    out_dir = os.path.join(base_output_dir, dataset_names, eval_str)
-    return out_dir
+    return icsd_df, hypo_df
 
 
 def main(config_map, forced=False):
-    for experiment in config_map['experiments']:
-        # first check if these files have already been written. If so, then skip
-        out_dir = get_out_dir(experiment, base_output_dir=config_map['output_dir'])
-        test_file = os.path.join(out_dir, 'test.csv.gz')
-        if not forced and os.path.isfile(test_file):
-            print(f"Input files already exist for {out_dir}. Use --forced to overwrite (TODO)")
+    experiments = utils.get_experiments(config_map['experiments'])
+    print(f"Setting up {len(experiments)} experiments")
+    for experiment in experiments:
+        print("\n" + '-'*50)
+        setup_experiment(config_map, experiment, forced=forced) 
+
+
+def setup_experiment(config_map, experiment, forced=False):
+    print(experiment)
+    # first check if these files have already been written. If so, then skip
+    out_dir = utils.get_out_dir(config_map, experiment)
+    test_file = os.path.join(out_dir, 'test.csv.gz')
+    if not forced and os.path.isfile(test_file):
+        print(f"Input files already exist for {out_dir}. Use --forced to overwrite (TODO)")
+        return
+
+    icsd_df, hypo_df = load_datasets(config_map, experiment) 
+
+    eval_settings = experiment['eval_settings']
+    random_state = eval_settings.get('seed')
+    if random_state is not None:
+        print(f"Using random_state: {random_state}")
+
+    # Split the icsd data into training and test sets
+    train_df = pd.DataFrame()
+    valid_df = pd.DataFrame()
+    test_df = pd.DataFrame()
+    for df, dataset_type in [(icsd_df, 'icsd'), (hypo_df, 'hypo')]:
+        if len(df) == 0:
             continue
+        eval_type = eval_settings.get(dataset_type, {'random_subset': 0.05})
+        if isinstance(eval_type, dict):
+            eval_type, val = list(eval_type.items())[0]
+        print(f"Making splits for {dataset_type} using '{eval_type}'")
+        if eval_type == "random_subset":
+            train, valid, test = random_split_df(df, test_size=val, random_state=random_state)
+            #icsd_train, icsd_valid, icsd_test = random_split(icsd_ids, random_state=random_state)
+        elif eval_type == "leave_out_comp":
+            train, valid, test = leave_out_comp(df, random_state=random_state)
+        elif eval_type == "leave_out_comp_minus_one":
+            sys.exit(f"{eval_type} not yet implemented. Quitting")
 
-        hypo_df = pd.DataFrame()
-        icsd_df = pd.DataFrame()
-        for dataset_name in experiment['datasets']:
-            dataset = config_map['datasets'][dataset_name]
-            if dataset['hypothetical'] is True:
-                curr_df = load_hypothetical_structures(
-                    dataset['relaxed_energies'], dataset['structures_file'])
-                df = pd.concat([df, curr_df])
-            else:
-                # treat this as an ICSD dataset
-                curr_df = load_icsd(
-                    dataset['energies'], dataset['structures_file'])
-                df = pd.concat([df, curr_df])
-
-            nan_ids = curr_df[curr_df.crystal.isna()]['id'].values
-            if len(nan_ids) > 0:
-                print(f"\t{len(nan_ids)} missing ids: {str(nan_ids)}")
-
-        eval_settings = experiment['eval_settings']
-        random_state = eval_settings.get('seed')
-        if random_state is not None:
-            print(f"Using random_state: {random_state}")
-
-        # Split the icsd data into training and test sets
-        train_df = pd.DataFrame()
-        valid_df = pd.DataFrame()
-        test_df = pd.DataFrame()
-        for df, dataset_type in [(icsd_df, 'icsd'), (hypo_df, 'hypo')]:
-            if len(df) == 0:
-                continue
-            eval_type = eval_settings.get(dataset_type, 'random_subset')
-            print(f"Making splits for {dataset_type} using '{eval_type}'")
-            if eval_type == "random_subset":
-                train, valid, test = random_split_df(df, random_state=random_state)
-                #icsd_train, icsd_valid, icsd_test = random_split(icsd_ids, random_state=random_state)
-            elif eval_type == "leave_out_comp":
-                train, valid, test = leave_out_comp(df, random_state=random_state)
-            elif eval_type == "leave_out_comp_minus_one":
-                sys.exit(f"{eval_type} not yet implemented. Quitting")
-
-            print(f"# train: {len(train)}, # valid: {len(valid)}, # test: {len(test)}")
-            train_df = pd.concat([train_df, train])
-            valid_df = pd.concat([valid_df, valid])
-            test_df = pd.concat([test_df, test])
+        print(f"# train: {len(train)}, # valid: {len(valid)}, # test: {len(test)}")
+        train_df = pd.concat([train_df, train])
+        valid_df = pd.concat([valid_df, valid])
+        test_df = pd.concat([test_df, test])
 
     # Initialize the preprocessor class.
     preprocessor = CifPreprocessor(num_neighbors=12)
