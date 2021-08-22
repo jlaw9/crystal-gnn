@@ -2,6 +2,7 @@ import os
 import pickle
 import math
 import shutil
+import argparse
 
 import numpy as np
 import tensorflow as tf
@@ -13,13 +14,26 @@ from tensorflow.keras import layers
 
 import nfp
 from nfp_extensions import RBFExpansion
+import utils
 
 # Initialize the preprocessor class.
 from nfp_extensions import CifPreprocessor
 preprocessor = CifPreprocessor(num_neighbors=12)
 
-dataset_name = "icsd_zintl"
-tfrecords_dir = f'tfrecords_{dataset_name}'
+
+parser = argparse.ArgumentParser(description='', )
+parser.add_argument('--config-file', type=str, default="config/config.yaml",
+                    help='config file to use for training the model. TODO use hyperparameters from config file')
+
+args = parser.parse_args()
+
+config_map = utils.load_config_file(args.config_file)
+experiment = config_map['experiments'][0]
+tfrecords_dir = utils.get_out_dir(config_map, experiment)
+print(tfrecords_dir)
+
+#dataset_name = "icsd_zintl"
+#tfrecords_dir = f'tfrecords_{dataset_name}'
 
 preprocessor.from_json(os.path.join(tfrecords_dir, 'preprocessor.json'))
 
@@ -180,17 +194,18 @@ optimizer = tfa.optimizers.AdamW(learning_rate=lr_schedule, weight_decay=wd_sche
 
 model.compile(loss='mae', optimizer=optimizer)
 
-model_name = f'trained_model_{dataset_name}'
+#model_name = f'trained_model_{dataset_name}'
+out_dir = tfrecords_dir
 
-if not os.path.exists(model_name):
-    os.makedirs(model_name)
+#if not os.path.exists(model_name):
+#    os.makedirs(model_name)
 
 # Make a backup of the job submission script
-shutil.copy(__file__, model_name)
+shutil.copy(__file__, out_dir)
 
-filepath = model_name + "/best_model.hdf5"
+filepath = out_dir + "/best_model.hdf5"
 checkpoint = tf.keras.callbacks.ModelCheckpoint(filepath, save_best_only=True, verbose=0)
-csv_logger = tf.keras.callbacks.CSVLogger(model_name + '/log.csv')
+csv_logger = tf.keras.callbacks.CSVLogger(out_dir + '/log.csv')
 
 
 if __name__ == "__main__":
