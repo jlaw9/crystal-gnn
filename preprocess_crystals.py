@@ -48,13 +48,17 @@ def load_hypothetical_structures(
     return hypo_df
 
 
-def random_split_df(df, test_size=.05, random_state=None):
+def random_split_df(df, test_size=.05, random_state=None, skip_eval_relaxed=False):
     strc_ids = df.id.unique()
     train, valid, test = random_split(
         strc_ids, test_size=test_size, random_state=random_state)
     train_df = df[df.id.isin(train)]
     valid_df = df[df.id.isin(valid)]
     test_df = df[df.id.isin(test)]
+    if skip_eval_relaxed:
+        valid_df = valid_df[valid_df['relaxed'] == False]
+        test_df = test_df[test_df['relaxed'] == False]
+
     return train_df, valid_df, test_df
 
 
@@ -70,7 +74,7 @@ def random_split(structure_ids, test_size=.05, random_state=None):
     return train, valid, test
 
 
-def leave_out_comp(df, random_state=None):
+def leave_out_comp(df, random_state=None, skip_eval_relaxed=False):
     # Split the hypothetical data into training and test sets, such that test/valid sets have one composition per comp_type
     valid_comp = df.groupby("comp_type").sample(n=1, random_state=random_state).composition
     train = df[~df.composition.isin(valid_comp)]
@@ -79,6 +83,9 @@ def leave_out_comp(df, random_state=None):
 
     valid = df[df.composition.isin(valid_comp)]
     test = df[df.composition.isin(test_comp)]
+    if skip_eval_relaxed:
+        valid = valid[valid['relaxed'] == False]
+        test = test[test['relaxed'] == False]
     print(f"leave_out_comp: # valid compositions: {len(valid_comp)}, # test comps: {len(test_comp)}")
     return train, valid, test
 
@@ -95,6 +102,8 @@ def load_datasets(config_map, experiment):
             if curr_df is None:
                 curr_df = load_hypothetical_structures(
                     dataset['relaxed_energies'], dataset['structures_file'])
+                # keep track of if these structures are relaxed or not
+                curr_df['relaxed'] = dataset['relaxed']
             hypo_df = pd.concat([hypo_df, curr_df])
         else:
             # treat this as an ICSD dataset
@@ -157,18 +166,32 @@ def setup_experiment(config_map, experiment, forced=False):
     train_df = pd.DataFrame()
     valid_df = pd.DataFrame()
     test_df = pd.DataFrame()
+    # if both the unrelaxed and relaxed versions are present, then evaluate on only the unrelaxed
+    hypo_skip_eval_relaxed = False
+    if 'relaxed' in hypo_df:
+        relaxed_state = hypo_df['relaxed']
+        if False in relaxed_state and True in relaxed_state:
+            hypo_skip_eval_relaxed = True
+        
     for df, dataset_type in [(icsd_df, 'icsd'), (hypo_df, 'hypo')]:
         if len(df) == 0:
             continue
+        skip_eval_relaxed = hypo_skip_eval_relaxed if dataset_type == 'hypo' else False
+
         eval_type = eval_settings.get(dataset_type, {'random_subset': 0.05})
         if isinstance(eval_type, dict):
             eval_type, val = list(eval_type.items())[0]
         print(f"Making splits for {dataset_type} using '{eval_type}'")
         if eval_type == "random_subset":
-            train, valid, test = random_split_df(df, test_size=val, random_state=random_state)
+            train, valid, test = random_split_df(df, 
+                                                 test_size=val, 
+                                                 random_state=random_state, 
+                                                 skip_eval_relaxed=skip_eval_relaxed)
             #icsd_train, icsd_valid, icsd_test = random_split(icsd_ids, random_state=random_state)
         elif eval_type == "leave_out_comp":
-            train, valid, test = leave_out_comp(df, random_state=random_state)
+            train, valid, test = leave_out_comp(df, 
+                                                random_state=random_state,
+                                                skip_eval_relaxed=skip_eval_relaxed)
         elif eval_type == "leave_out_comp_minus_one":
             sys.exit(f"{eval_type} not yet implemented. Quitting")
 
