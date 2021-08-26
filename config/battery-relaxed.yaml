@@ -52,16 +52,8 @@ output_dir: "outputs"
 #     e.g., hypo: [random_subset: 0.05, "leave_out_comp"]
 #     e.g., seed: [1,2,3,4,5]
 experiments:
-#    - datasets: ["icsd", "zintl_unrelaxed"]
-#      eval_settings:
-#          icsd_lattice: ['orig']
-#          hypo_lattice: ['cubic']
-#          icsd: [random_subset: 0.05]
-#          hypo: ["leave_out_comp"]
-#          # random seed to use for train/valid/test splits
-#          seed: [1]
 
-    - datasets: ["icsd", "battery_unrelaxed"]
+    - datasets: ["icsd", "battery_relaxed"]
       eval_settings:
           icsd_lattice: ['orig']
           hypo_lattice: ['orig', 'cubic']
