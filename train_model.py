@@ -1,5 +1,4 @@
 import os
-import pickle
 import math
 import shutil
 import argparse
@@ -13,11 +12,11 @@ from tensorflow.keras import layers
 # tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 import nfp
-from nfp_extensions import RBFExpansion
-import utils
+from src.nfp_extensions import RBFExpansion
+from src import utils
 
 # Initialize the preprocessor class.
-from nfp_extensions import CifPreprocessor
+from src.nfp_extensions import CifPreprocessor
 preprocessor = CifPreprocessor(num_neighbors=12)
 
 

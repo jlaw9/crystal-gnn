@@ -1,23 +1,17 @@
 import argparse
-import numpy as np
 import pandas as pd
 pd.set_option("display.max_columns", None)
-from sklearn.metrics import mean_squared_error 
+from sklearn.metrics import mean_squared_error
 
-import gzip
-import json
-import pickle
 import tensorflow as tf
-import tensorflow_addons as tfa
-from pymatgen.core.structure import Structure
-from tqdm import tqdm, trange
+from tqdm import tqdm
 import monotonic
 mtime = monotonic.time.time
 t0 = mtime()
 
 import nfp
-from nfp_extensions import RBFExpansion, CifPreprocessor
-import utils
+from src.nfp_extensions import RBFExpansion, CifPreprocessor
+from src import utils
 
 
 def main(config_map):

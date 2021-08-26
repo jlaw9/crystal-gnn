@@ -1,17 +1,14 @@
-import os
 import warnings
 
 import pandas as pd
-import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from pymatgen.core.structure import Structure
 from sklearn.model_selection import train_test_split
-import pickle
 
 import nfp
 
-from nfp_extensions import CifPreprocessor
+from src.nfp_extensions import CifPreprocessor
 tqdm.pandas()
 
       

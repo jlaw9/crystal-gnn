@@ -1,21 +1,18 @@
 import argparse
 import os
 import sys
-import warnings
 
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 #tqdm.pandas()
 import tensorflow as tf
-from pymatgen.core.structure import Structure
 from sklearn.model_selection import train_test_split
-import pickle
 
 import nfp
 
-import utils
-from nfp_extensions import CifPreprocessor
+from src import utils
+from src.nfp_extensions import CifPreprocessor
 
 
 def load_icsd(icsd_energies_file, icsd_structures_file):

@@ -1,5 +1,4 @@
 import os
-import pickle
 import math
 import shutil
 
@@ -8,10 +7,10 @@ import tensorflow as tf
 from tensorflow.keras import layers
 
 import nfp
-from nfp_extensions import RBFExpansion
+from src.nfp_extensions import RBFExpansion
 
 # Initialize the preprocessor class.
-from nfp_extensions import CifPreprocessor
+from src.nfp_extensions import CifPreprocessor
 preprocessor = CifPreprocessor(num_neighbors=12)
 preprocessor.from_json('tfrecords_mp/preprocessor.json')
 

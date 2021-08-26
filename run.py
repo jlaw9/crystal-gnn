@@ -1,17 +1,11 @@
 
 import argparse
 import os
-import sys
 import copy
 import yaml
 import subprocess
 
-import pandas as pd
-import numpy as np
-from tqdm import tqdm
-
-import utils
-import preprocess_crystals
+from src import utils
 
 
 def main(config_map, forced=False):
@@ -51,7 +45,12 @@ def main(config_map, forced=False):
         subprocess.check_call(submit_command, shell=True)
 
 
-def write_submit_script(out_file, command, name="test-crystals", log_file="", err_file="", email=os.environ['USER']):
+def write_submit_script(out_file,
+                        command,
+                        name="test-crystals",
+                        log_file="",
+                        err_file="",
+                        email=os.environ['USER']):
     out_str = f"""#!/bin/bash
 #SBATCH --account=rlmolecule
 #SBATCH --time=10:00:00
