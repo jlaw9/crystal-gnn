@@ -5,8 +5,6 @@ import yaml
 import itertools
 import copy
 
-from pymatgen.core.structure import Structure
-
 
 def load_config_file(config_file):
     print(f"Loading config file '{config_file}'")
@@ -19,6 +17,9 @@ def load_config_file(config_file):
 
 
 def load_structures_from_json(structures_file):
+    # TODO I get an error when importing pymatgen if I use the wrong package versions
+    from pymatgen.core.structure import Structure
+
     print(f"Loading {structures_file}")
     with gzip.open(structures_file, 'r') as f:
         structures_dict = json.loads(f.read().decode())

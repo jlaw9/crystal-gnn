@@ -4,6 +4,7 @@ import os
 import sys
 import copy
 import yaml
+import subprocess
 
 import pandas as pd
 import numpy as np
@@ -13,7 +14,7 @@ import utils
 import preprocess_crystals
 
 
-def main(config_map):
+def main(config_map, forced=False):
     experiments = utils.get_experiments(config_map['experiments'])
     for experiment in experiments:
         # first generate the training and validation input data for the model
@@ -21,6 +22,10 @@ def main(config_map):
         exp_config_map['experiments'] = [experiment]
         #preprocess_crystals.main(exp_config_map)
         out_dir = utils.get_out_dir(config_map, experiment)
+        model_file = f"{out_dir}/best_model.hdf5"
+        if not forced and os.path.isfile(model_file):
+            print(f"\t{model_file} already exists. TODO use --foced to re-run")
+            continue
 
         run_config_file = f"{out_dir}/run.yaml"
         print(f"Writing {run_config_file}")
@@ -28,8 +33,49 @@ def main(config_map):
             yaml.dump(exp_config_map, out)
 
         # now setup the job to submit
-        command = f"srun python train_model.py --config {run_config_file}"
-        print(command)
+        command = f"python train_model.py --config {run_config_file}"
+        #print(command)
+
+        out_file = f"{out_dir}/submit.sh"
+        write_submit_script(out_file, 
+                command, 
+                name=os.path.basename(out_dir),
+                log_file=f"{out_dir}/log.out",
+                err_file=f"{out_dir}/err.out",
+                email=os.environ['USER'],
+                )
+
+        # now submit to the queue
+        submit_command = f"sbatch {out_file}"
+        print(submit_command + '\n')
+        subprocess.check_call(submit_command, shell=True)
+
+
+def write_submit_script(out_file, command, name="test-crystals", log_file="", err_file="", email=os.environ['USER']):
+    out_str = f"""#!/bin/bash
+#SBATCH --account=rlmolecule
+#SBATCH --time=10:00:00
+#SBATCH --job-name={name}
+#SBATCH --nodes=1
+#SBATCH --gres=gpu:2
+#SBATCH -o {log_file}
+#SBATCH -e {err_file}
+#SBATCH --mail-user={email}
+#SBATCH --mail-type=END
+
+source ~/.bashrc_conda
+module load cudnn/8.1.1/cuda-11.2
+#conda activate crystals
+conda activate ~/.conda-envs/rlmol
+
+echo "Job started at `date`"
+srun {command}
+echo "Job ended at `date`"
+"""
+
+    print(f"Writing {out_file}")
+    with open(out_file, 'w') as out:
+        out.write(out_str)
 
 
 
