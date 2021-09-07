@@ -1,15 +1,18 @@
 import argparse
+import os, sys
 import pandas as pd
 pd.set_option("display.max_columns", None)
 from sklearn.metrics import mean_squared_error
 
 import tensorflow as tf
+import tensorflow_addons as tfa  # need to import so the model is loaded correctly
 from tqdm import tqdm
 import monotonic
 mtime = monotonic.time.time
 t0 = mtime()
 
 import nfp
+sys.path.insert(0, '')
 from src.nfp_extensions import RBFExpansion, CifPreprocessor
 from src import utils
 
@@ -24,13 +27,17 @@ def main(config_map):
 loaded_datasets = {}
 def eval_experiment(experiment):
     exp_dir = utils.get_out_dir(config_map, experiment)
-    print(exp_dir)
+    params = utils.check_default_hyperparams(config_map['hyperparameters'])
+    # now get the directory in which to put this model file (distinguished by hyperparameters)
+    model_dir = utils.get_hyperparam_dir(exp_dir, params)
+    print(model_dir)
+
     # Initialize the preprocessor class.
     preprocessor = CifPreprocessor(num_neighbors=12)
     preprocessor.from_json(f'{exp_dir}/preprocessor.json')
         
     model = tf.keras.models.load_model(
-        f'{exp_dir}/best_model.hdf5',
+        f'{model_dir}/best_model.hdf5',
         custom_objects={**nfp.custom_objects, **{'RBFExpansion': RBFExpansion}})
 
     print(f"Reading {exp_dir}/test.csv.gz")
@@ -75,10 +82,29 @@ def eval_experiment(experiment):
     test_hypo = test[~test.id.isin(icsd_df.id)].reset_index(drop=True)
     print(test_icsd)
     print(test_hypo)
+    test_strcs = {s: icsd_structures[s] for s in test_icsd.id}
+    test_strcs.update({s: hypo_structures[s] for s in test_hypo.id})
+    # now apply the lattice
+    def apply_cubic(struc):
+        struc.lattice = struc.lattice.cubic(1.0)
+        return struc
+    # transform the structures to a different lattice if specified
+    icsd_lattice = experiment['eval_settings'].get('icsd_lattice', 'orig')
+    hypo_lattice = experiment['eval_settings'].get('hypo_lattice', 'orig')
+
+    if icsd_lattice == 'cubic':
+        print(f"\tconverting ICSD structures to '{icsd_lattice}'")
+        for s in test_icsd.id:
+            test_strcs[s] = apply_cubic(test_strcs[s])
+    if hypo_lattice == 'cubic':
+        print(f"\tconverting hypothetical structures to '{hypo_lattice}'")
+        for s in test_hypo.id:
+            test_strcs[s] = apply_cubic(test_strcs[s])
+
 
     icsd_dataset = tf.data.Dataset.from_generator(
-        lambda: (preprocessor.construct_feature_matrices(icsd_structures[id], train=False)
-                 for id in tqdm(test_icsd.id)),
+        lambda: (preprocessor.construct_feature_matrices(test_strcs[s], train=False)
+                 for s in tqdm(test_icsd.id)),
         output_types=preprocessor.output_types,
         output_shapes=preprocessor.output_shapes)\
         .padded_batch(batch_size=32,
@@ -87,8 +113,8 @@ def eval_experiment(experiment):
 
 
     hypo_dataset = tf.data.Dataset.from_generator(
-        lambda: (preprocessor.construct_feature_matrices(hypo_structures[id], train=False)
-                 for id in tqdm(test_hypo.id)),
+        lambda: (preprocessor.construct_feature_matrices(test_strcs[s], train=False)
+                 for s in tqdm(test_hypo.id)),
         output_types=preprocessor.output_types,
         output_shapes=preprocessor.output_shapes)\
         .padded_batch(batch_size=32,
@@ -105,7 +131,7 @@ def eval_experiment(experiment):
     df = pd.DataFrame()
     df = df.append(test_icsd)
     df = df.append(test_hypo)
-    df.to_csv(f'{exp_dir}/predicted_test.csv', index=False)
+    df.to_csv(f'{model_dir}/predicted_test.csv', index=False)
 
     ##MAE and RMSE##
     realVals = df.energyperatom
@@ -118,11 +144,11 @@ def eval_experiment(experiment):
     out_str += f'ICSD MAE: {(test_icsd.energyperatom - test_icsd.predicted_energyperatom.squeeze()).abs().mean():.3f} eV/atom\n'
     out_str += f'Hypo MAE: {(test_hypo.energyperatom - test_hypo.predicted_energyperatom.squeeze()).abs().mean():.3f} eV/atom\n'
     print(out_str)
-    with open(f'{exp_dir}/mae_test.txt','w') as out:
+    with open(f'{model_dir}/mae_test.txt','w') as out:
         out.write(out_str)
 
     elapsed = mtime()-t0
-    f_time = open(f'{exp_dir}/time_test.txt', 'w')
+    f_time = open(f'{model_dir}/time_test.txt', 'w')
     print("elaspsed_time:", elapsed, file=f_time)
     f_time.close()
 
