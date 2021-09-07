@@ -1,4 +1,4 @@
-import os
+import os, sys
 import math
 import shutil
 import argparse
@@ -31,6 +31,16 @@ experiment = config_map['experiments'][0]
 tfrecords_dir = utils.get_out_dir(config_map, experiment)
 print(tfrecords_dir)
 
+# also get the hyperparameters
+params = config_map['hyperparameters']
+# make sure all the hyperparameters are present
+params = utils.check_default_hyperparams(params)
+print(params)
+
+# now get the directory in which to put this model file (distinguished by hyperparameters)
+model_dir = utils.get_hyperparam_dir(tfrecords_dir, params)
+print(model_dir)
+
 #dataset_name = "icsd_zintl"
 #tfrecords_dir = f'tfrecords_{dataset_name}'
 
@@ -54,9 +64,9 @@ def parse_example(example):
     return parsed, energyperatom
 
 # Here, we have to add the prediction target padding onto the input padding
-batch_size = 64   # typical batch sizes= 32, 64, 128, 256 (usually batch size=32 or 64 is optimum) 
-max_sites = 256
-max_bonds = 2048
+batch_size = params['batch_size']
+max_sites = params['max_sites']
+max_bonds = params['max_bonds']
 padded_shapes = (preprocessor.padded_shapes(max_sites=max_sites, max_bonds=max_bonds), [])
 padding_values = (preprocessor.padding_values, tf.constant(np.nan, dtype=tf.float32))
 
@@ -117,8 +127,8 @@ connectivity = layers.Input(shape=[max_bonds, 2], dtype=tf.int64, name='connecti
 
 input_tensors = [site_class, distances, connectivity]
 
-embed_dimension = 256   # typical embedding dimensions= 32, 64, 128, 256
-num_messages = 6        # typical number of message passing blocks= 3-6
+embed_dimension = params['embed_dimension']
+num_messages = params['num_messages']
 
 atom_state = layers.Embedding(preprocessor.site_classes, embed_dimension,
                               name='site_embedding', mask_zero=True)(site_class)
@@ -178,7 +188,7 @@ model = tf.keras.Model(input_tensors, [out])
 
 # TODO change to the size of the dataset
 STEPS_PER_EPOCH = math.ceil(25633 / batch_size)  # number of training examples
-lr = 1E-4       # too high learning rates can lead to NaN losses 
+lr = params['learning_rate']       # too high learning rates can lead to NaN losses 
 lr_schedule = tf.keras.optimizers.schedules.InverseTimeDecay(lr,
   decay_steps=STEPS_PER_EPOCH*50,
   decay_rate=1,
@@ -193,23 +203,17 @@ optimizer = tfa.optimizers.AdamW(learning_rate=lr_schedule, weight_decay=wd_sche
 
 model.compile(loss='mae', optimizer=optimizer)
 
-#model_name = f'trained_model_{dataset_name}'
-out_dir = tfrecords_dir
-
-#if not os.path.exists(model_name):
-#    os.makedirs(model_name)
-
 # Make a backup of the job submission script
-shutil.copy(__file__, out_dir)
+shutil.copy(__file__, model_dir)
 
-filepath = out_dir + "/best_model.hdf5"
+filepath = model_dir + "/best_model.hdf5"
 checkpoint = tf.keras.callbacks.ModelCheckpoint(filepath, save_best_only=True, verbose=0)
-csv_logger = tf.keras.callbacks.CSVLogger(out_dir + '/log.csv')
+csv_logger = tf.keras.callbacks.CSVLogger(model_dir + '/log.csv')
 
 
 if __name__ == "__main__":
     model.fit(train_dataset,
               validation_data=valid_dataset,
-              epochs=100,
+              epochs=params['epochs'],
               callbacks=[checkpoint, csv_logger],
               verbose=1)

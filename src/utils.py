@@ -129,3 +129,23 @@ def get_out_dir(config_map, experiment):
     return out_dir
 
 
+def get_hyperparam_dir(out_dir, params):
+    # now get the directory in which to put this model file (distinguished by hyperparameters)
+    model_dir = f"lr{params['learning_rate']:0.0e}_ep{params['epochs']}_bs{params['batch_size']}" + \
+                f"_ms{params['max_sites']}_mb{params['max_bonds']}_ed{params['embed_dimension']}" + \
+                f"_nm{params['num_messages']}"
+    model_dir = f"{out_dir}/{model_dir}"
+    return model_dir
+
+
+def check_default_hyperparams(params):
+    params['batch_size'] = int(params.get('batch_size', 64))   # typical batch sizes= 32, 64, 128, 256 (usually batch size=32 or 64 is optimum) 
+    params['max_sites'] = int(params.get('max_sites', 256))
+    params['max_bonds'] = int(params.get('max_bonds', 2048))
+    params['embed_dimension'] = int(params.get('embed_dimension', 256))   # typical embedding dimensions= 32, 64, 128, 256
+    params['num_messages'] = int(params.get('num_messages', 6))        # typical number of message passing blocks= 3-6
+    params['learning_rate'] = float(params.get('learning_rate', 1E-4))       # too high learning rates can lead to NaN losses 
+    params['epochs'] = int(params.get('epochs', 100))
+    return params
+
+
