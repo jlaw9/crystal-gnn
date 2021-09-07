@@ -8,7 +8,7 @@ import subprocess
 from src import utils
 
 
-def main(config_map, forced=False):
+def main(config_map, submit=False, forced=False):
     experiments = utils.get_experiments(config_map['experiments'])
     for experiment in experiments:
         # first generate the training and validation input data for the model
@@ -16,6 +16,10 @@ def main(config_map, forced=False):
         exp_config_map['experiments'] = [experiment]
         #preprocess_crystals.main(exp_config_map)
         out_dir = utils.get_out_dir(config_map, experiment)
+        params = utils.check_default_hyperparams(config_map['hyperparameters'])
+        out_dir = utils.get_hyperparam_dir(out_dir, params)
+        os.makedirs(out_dir, exist_ok=True)
+
         model_file = f"{out_dir}/best_model.hdf5"
         if not forced and os.path.isfile(model_file):
             print(f"\t{model_file} already exists. TODO use --foced to re-run")
@@ -33,16 +37,17 @@ def main(config_map, forced=False):
         out_file = f"{out_dir}/submit.sh"
         write_submit_script(out_file, 
                 command, 
-                name=os.path.basename(out_dir),
+                name=os.path.basename(os.path.dirname(out_dir)),
                 log_file=f"{out_dir}/log.out",
                 err_file=f"{out_dir}/err.out",
                 email=os.environ['USER'],
                 )
 
         # now submit to the queue
-        submit_command = f"sbatch {out_file}"
-        print(submit_command + '\n')
-        subprocess.check_call(submit_command, shell=True)
+        if submit:
+            submit_command = f"sbatch {out_file}"
+            print(submit_command + '\n')
+            subprocess.check_call(submit_command, shell=True)
 
 
 def write_submit_script(out_file,
@@ -82,10 +87,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='', )
     parser.add_argument('--config-file', type=str, default="config/config.yaml",
                         help='config file to use when building dataset splits and training the model')
+    parser.add_argument('--submit', action='store_true', default=False,
+                        help='Submit to the HPC envrionment using sbatch')
     # parser.add_argument('--hypo-structures', type=str, action='append',
     #                    help='path/to/hypothetical-structures.json.gz. Can specify multiple times')
 
     args = parser.parse_args()
 
     config_map = utils.load_config_file(args.config_file)
-    main(config_map)
+    main(config_map, submit=args.submit)
