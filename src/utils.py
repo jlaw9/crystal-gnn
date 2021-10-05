@@ -18,7 +18,7 @@ def load_config_file(config_file):
 
 def load_structures_from_json(structures_file):
     # TODO I get an error when importing pymatgen if I use the wrong package versions
-    from pymatgen.core.structure import Structure
+    from pymatgen.core.structure import Structure, IStructure
 
     print(f"Loading {structures_file}")
     with gzip.open(structures_file, 'r') as f:
@@ -27,6 +27,13 @@ def load_structures_from_json(structures_file):
     structures = {}
     for key, structure_dict in structures_dict.items():
         structures[key] = Structure.from_dict(structure_dict)
+#        try:
+#            structures[key] = IStructure.from_dict(structure_dict)
+#        except ValueError as e:
+#            print(e)
+#            print(key, structure_dict)
+#            continue
+#            #sys.exit()
 
     print(f"\t{len(structures)} loaded")
     return structures
@@ -64,6 +71,7 @@ eval_names = {
     'random_subset': 'randsub',
     'leave_out_comp': 'loc',
     'leave_out_comp_minus_one': 'loc1',
+    'valid_split_all_data': 'vsad',
 }
 
 def get_eval_str(config_map, experiment):
@@ -84,9 +92,14 @@ def get_eval_str(config_map, experiment):
         eval_type = eval_settings.get(dataset_type, {'random_subset': 0.05})
         if isinstance(eval_type, dict):
             eval_type, val = list(eval_type.items())[0]
-        if eval_type == 'random_subset':
+        if eval_type in ['random_subset', 'valid_split_all_data']:
             eval_type = eval_names[eval_type] + str(val).replace('.', '_')
         eval_str = f"{dataset_type}_{lattice_str}{eval_names.get(eval_type, eval_type)}"
+
+        # additional evaluation options
+        if experiment.get('set_vol_to_relaxed'):
+            eval_str += "_volrel"
+        
         eval_strs.append(eval_str)
     full_eval_str = "_".join(eval_strs)
 
@@ -113,7 +126,7 @@ def get_lattice_str(lattice):
     return lattice_str
 
 
-def get_out_dir(config_map, experiment):
+def get_out_dir(config_map, experiment, postfix=None):
     # structure of outputs:
     # <base_output_dir>/
     #   <dataset_name>/
@@ -126,6 +139,9 @@ def get_out_dir(config_map, experiment):
     eval_str = get_eval_str(config_map, experiment)
 
     out_dir = os.path.join(base_output_dir, dataset_names, eval_str)
+    pf = experiment.get('postfix')
+    out_dir += pf if pf is not None else ''
+    out_dir += postfix if postfix is not None else ''
     return out_dir
 
 
