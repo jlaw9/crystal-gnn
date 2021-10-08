@@ -31,5 +31,5 @@ SELECT FE.entry_id, FE.fit_id, FE.delta_e, C.label, C.input_id, C.output_id, C.e
 
 Then I used this jupyter notebook to piece them together and create the structures
 ```
-/projects/rlmolecule/jlaw/crystal-gnn-fork/src/notebooks/data_prep_oqmd.ipynb
+src/notebooks/data_prep_oqmd.ipynb
 ```
