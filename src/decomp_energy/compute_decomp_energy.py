@@ -73,7 +73,7 @@ df_rel = pd.read_csv(relaxed_energies_file)
 print(df_rel.head(2))
 strc_energies = dict(zip(df_rel['id'], df_rel['energyperatom']))
 
-comp_phases_file = "/home/jlaw/projects/arpa-e/crystals/rlmolecule/examples/crystal_energy/inputs/competing_phases.csv"
+comp_phases_file = "/projects/rlmolecule/shubham/file_transfer/decorations/jupyter_demo/competing_phases.csv"
 print(f"reading {comp_phases_file}")
 df_phases = pd.read_csv(comp_phases_file)
 print(df_phases.head(2))
