@@ -97,8 +97,14 @@ def get_eval_str(config_map, experiment):
         eval_str = f"{dataset_type}_{lattice_str}{eval_names.get(eval_type, eval_type)}"
 
         # additional evaluation options
-        if experiment.get('set_vol_to_relaxed'):
-            eval_str += "_volrel"
+        if experiment.get('set_vol_to'):
+            eval_str += f"_vol{str(experiment['set_vol_to']).replace('.','_')}"
+        if dataset_type == 'hypo':
+            if experiment.get('set_vol_to_relaxed'):
+                eval_str += "_volrel"
+            if experiment.get('structures_to_use'):
+                # the key is the 'label' for these structures
+                eval_str += "_" + list(experiment['structures_to_use'].keys())[0]
         
         eval_strs.append(eval_str)
     full_eval_str = "_".join(eval_strs)

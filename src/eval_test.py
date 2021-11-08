@@ -17,16 +17,23 @@ from src.nfp_extensions import RBFExpansion, CifPreprocessor
 from src import utils
 
 
-def main(config_map):
+# now apply the lattice
+def apply_cubic(struc):
+    struc.lattice = struc.lattice.cubic(1.0)
+    return struc
+
+
+def main(config_map, exp_dir=None, eval_valid=False):
     experiments = utils.get_experiments(config_map['experiments'])
     for experiment in experiments:
         print("\n" + '-'*50)
-        eval_experiment(experiment)
+        eval_experiment(experiment, exp_dir=exp_dir, eval_valid=eval_valid)
 
 
 loaded_datasets = {}
-def eval_experiment(experiment):
-    exp_dir = utils.get_out_dir(config_map, experiment)
+def eval_experiment(experiment, exp_dir=None, eval_valid=False):
+    if exp_dir is None:
+        exp_dir = utils.get_out_dir(config_map, experiment)
     params = utils.check_default_hyperparams(config_map['hyperparameters'])
     # now get the directory in which to put this model file (distinguished by hyperparameters)
     model_dir = utils.get_hyperparam_dir(exp_dir, params)
@@ -40,9 +47,15 @@ def eval_experiment(experiment):
         f'{model_dir}/best_model.hdf5',
         custom_objects={**nfp.custom_objects, **{'RBFExpansion': RBFExpansion}})
 
-    print(f"Reading {exp_dir}/test.csv.gz")
-    test = pd.read_csv(f'{exp_dir}/test.csv.gz')
-    print(test.head())
+    test_file = f"{exp_dir}/test.csv.gz"
+    if eval_valid:
+        test_file = f"{exp_dir}/valid.csv.gz"
+    print(f"Reading {test_file}")
+    test = pd.read_csv(test_file, dtype={'id': str})
+    print(test.head(2))
+
+    # TODO use the same code here as preprocess_crystals.py
+    #icsd_df, hypo_df = preprocess_crystals.load_datasets(config_map, experiment) 
 
     # first check if there are relaxed and unrelaxed datasets.
     # If so, just evaluate the unrelaxed structures
@@ -65,9 +78,32 @@ def eval_experiment(experiment):
             structures = utils.load_structures_from_json(dataset['structures_file'])
             loaded_datasets[dataset_name] = structures
 
+        set_vol_to = experiment.get('set_vol_to')
+        if set_vol_to:
+            print(f"Setting volume to {set_vol_to}")
+            def set_vol(strc, vol):
+                strc.scale_lattice(float(vol))
+                return strc
+            structures = {s_id: set_vol(s, float(set_vol_to)) for s_id, s in structures.items()}
+
         if dataset['hypothetical'] is True:
+            hypo_lattice = experiment['eval_settings'].get('hypo_lattice', 'orig')
+            if hypo_lattice == 'cubic':
+                print(f"\tconverting hypothetical structures to '{hypo_lattice}'")
+                for s_id in set(structures.keys()) & set(test.id.values):
+                    structures[s_id] = apply_cubic(structures[s_id])
+
+            if experiment.get('set_vol_to_relaxed') and dataset.get('relaxed') is False:
+                # also load the relaxed structures, and set the volume of the unrelaxed structures to match the relaxed
+                set_vol_to_relaxed = config_map['datasets'][dataset['relaxed_dataset']]['structures_file']
+                print("Setting the volume of the unrelaxed structures to match their corresponding relaxed structures")
+                rel_structures = utils.load_structures_from_json(set_vol_to_relaxed)
+                for s_id in set(structures.keys()) & set(test.id.values):
+                    rel_struc = rel_structures.get(s_id)
+                    structures[s_id].scale_lattice(rel_struc.volume)
+
             print(f"Reading {dataset['relaxed_energies']}")
-            hypo_relaxed = pd.read_csv(dataset['relaxed_energies'])
+            hypo_relaxed = pd.read_csv(dataset['relaxed_energies'], dtype={'id': str})
             print(hypo_relaxed.head())
             # allow for multiple hypothetical datasets
             hypo_structures.update(structures)
@@ -78,59 +114,59 @@ def eval_experiment(experiment):
             # allow for multiple icsd datasets
             icsd_structures.update(structures)
 
-    test_icsd = test[test.id.isin(icsd_df.id)].reset_index(drop=True)
-    test_hypo = test[~test.id.isin(icsd_df.id)].reset_index(drop=True)
-    print(test_icsd)
-    print(test_hypo)
-    test_strcs = {s: icsd_structures[s] for s in test_icsd.id}
-    test_strcs.update({s: hypo_structures[s] for s in test_hypo.id})
-    # now apply the lattice
-    def apply_cubic(struc):
-        struc.lattice = struc.lattice.cubic(1.0)
-        return struc
-    # transform the structures to a different lattice if specified
-    icsd_lattice = experiment['eval_settings'].get('icsd_lattice', 'orig')
-    hypo_lattice = experiment['eval_settings'].get('hypo_lattice', 'orig')
+    test_strcs = {} 
+    if len(icsd_structures) > 0:
+        test_icsd = test[test.id.isin(icsd_df.id)].reset_index(drop=True)
+        test_strcs.update({s: icsd_structures[s] for s in test_icsd.id})
+        if len(hypo_structures) > 0:
+            test_hypo = test[~test.id.isin(icsd_df.id)].reset_index(drop=True)
+            test_strcs.update({s: hypo_structures[s] for s in test_hypo.id})
+    elif len(icsd_structures) == 0:
+        test_hypo = test.reset_index(drop=True)
+        test_strcs.update({s: hypo_structures[s] for s in test_hypo.id})
+    #print(test_icsd)
+    #print(test_hypo)
 
-    if icsd_lattice == 'cubic':
-        print(f"\tconverting ICSD structures to '{icsd_lattice}'")
-        for s in test_icsd.id:
-            test_strcs[s] = apply_cubic(test_strcs[s])
-    if hypo_lattice == 'cubic':
-        print(f"\tconverting hypothetical structures to '{hypo_lattice}'")
-        for s in test_hypo.id:
-            test_strcs[s] = apply_cubic(test_strcs[s])
+    if len(icsd_structures) > 0:
+        # transform the structures to a different lattice if specified
+        icsd_lattice = experiment['eval_settings'].get('icsd_lattice', 'orig')
+
+        if icsd_lattice == 'cubic':
+            print(f"\tconverting ICSD structures to '{icsd_lattice}'")
+            for s in test_icsd.id:
+                test_strcs[s] = apply_cubic(test_strcs[s])
+
+        icsd_dataset = tf.data.Dataset.from_generator(
+            lambda: (preprocessor.construct_feature_matrices(test_strcs[s], train=False)
+                     for s in tqdm(test_icsd.id)),
+            output_types=preprocessor.output_types,
+            output_shapes=preprocessor.output_shapes)\
+            .padded_batch(batch_size=32,
+                          padded_shapes=preprocessor.padded_shapes(max_sites=256, max_bonds=2048),
+                          padding_values=preprocessor.padding_values)
+
+        predictions_icsd = model.predict(icsd_dataset)
+        test_icsd['predicted_energyperatom'] = predictions_icsd
+
+    if len(hypo_structures) > 0:
+        hypo_dataset = tf.data.Dataset.from_generator(
+            lambda: (preprocessor.construct_feature_matrices(test_strcs[s], train=False)
+                     for s in tqdm(test_hypo.id)),
+            output_types=preprocessor.output_types,
+            output_shapes=preprocessor.output_shapes)\
+            .padded_batch(batch_size=32,
+                          padded_shapes=preprocessor.padded_shapes(max_sites=256, max_bonds=2048),
+                          padding_values=preprocessor.padding_values)
 
 
-    icsd_dataset = tf.data.Dataset.from_generator(
-        lambda: (preprocessor.construct_feature_matrices(test_strcs[s], train=False)
-                 for s in tqdm(test_icsd.id)),
-        output_types=preprocessor.output_types,
-        output_shapes=preprocessor.output_shapes)\
-        .padded_batch(batch_size=32,
-                      padded_shapes=preprocessor.padded_shapes(max_sites=256, max_bonds=2048),
-                      padding_values=preprocessor.padding_values)
-
-
-    hypo_dataset = tf.data.Dataset.from_generator(
-        lambda: (preprocessor.construct_feature_matrices(test_strcs[s], train=False)
-                 for s in tqdm(test_hypo.id)),
-        output_types=preprocessor.output_types,
-        output_shapes=preprocessor.output_shapes)\
-        .padded_batch(batch_size=32,
-                      padded_shapes=preprocessor.padded_shapes(max_sites=256, max_bonds=2048),
-                      padding_values=preprocessor.padding_values)
-
-
-    predictions_icsd = model.predict(icsd_dataset)
-    predictions_hypo = model.predict(hypo_dataset)
-
-    test_icsd['predicted_energyperatom'] = predictions_icsd
-    test_hypo['predicted_energyperatom'] = predictions_hypo
+        predictions_hypo = model.predict(hypo_dataset)
+        test_hypo['predicted_energyperatom'] = predictions_hypo
 
     df = pd.DataFrame()
-    df = df.append(test_icsd)
-    df = df.append(test_hypo)
+    if len(icsd_structures) > 0:
+        df = df.append(test_icsd)
+    if len(hypo_structures) > 0:
+        df = df.append(test_hypo)
     df.to_csv(f'{model_dir}/predicted_test.csv', index=False)
 
     ##MAE and RMSE##
@@ -141,8 +177,10 @@ def eval_experiment(experiment):
     out_str = ""
     out_str += f'Test MAE: {(df.energyperatom - df.predicted_energyperatom.squeeze()).abs().mean():.3f} eV/atom\n'
     out_str += f"Test RMSE: {rmse}\n"
-    out_str += f'ICSD MAE: {(test_icsd.energyperatom - test_icsd.predicted_energyperatom.squeeze()).abs().mean():.3f} eV/atom\n'
-    out_str += f'Hypo MAE: {(test_hypo.energyperatom - test_hypo.predicted_energyperatom.squeeze()).abs().mean():.3f} eV/atom\n'
+    if len(icsd_structures) > 0:
+        out_str += f'ICSD MAE: {(test_icsd.energyperatom - test_icsd.predicted_energyperatom.squeeze()).abs().mean():.3f} eV/atom\n'
+    if len(hypo_structures) > 0:
+        out_str += f'Hypo MAE: {(test_hypo.energyperatom - test_hypo.predicted_energyperatom.squeeze()).abs().mean():.3f} eV/atom\n'
     print(out_str)
     with open(f'{model_dir}/mae_test.txt','w') as out:
         out.write(out_str)
@@ -201,11 +239,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='', )
     parser.add_argument('--config-file', type=str, default="config/config.yaml",
                         help='config file to use when building dataset splits and training the model')
+    parser.add_argument('--exp-dir', type=str,
+                        help='If the experiment dir is different than what the script would extract from the config file, then set that here.')
+    parser.add_argument('--eval-valid', action='store_true', default=False,
+                        help='Evaluate on the validation set (i.e., valid.csv.gz) rather than the test set (i.e., test.csv.gz)')
     # parser.add_argument('--hypo-structures', type=str, action='append',
     #                    help='path/to/hypothetical-structures.json.gz. Can specify multiple times')
 
     args = parser.parse_args()
 
     config_map = utils.load_config_file(args.config_file)
-    main(config_map)
+    main(config_map, exp_dir=args.exp_dir, eval_valid=args.eval_valid)
 

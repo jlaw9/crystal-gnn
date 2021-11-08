@@ -23,12 +23,16 @@ preprocessor = CifPreprocessor(num_neighbors=12)
 parser = argparse.ArgumentParser(description='', )
 parser.add_argument('--config-file', type=str, default="config/config.yaml",
                     help='config file to use for training the model. TODO use hyperparameters from config file')
+parser.add_argument('--exp-dir', type=str,
+                    help='If the experiment dir is different than what the script would extract from the config file, then set that here.')
 
 args = parser.parse_args()
 
 config_map = utils.load_config_file(args.config_file)
 experiment = config_map['experiments'][0]
-tfrecords_dir = utils.get_out_dir(config_map, experiment)
+tfrecords_dir = args.exp_dir
+if tfrecords_dir is None:
+    tfrecords_dir = utils.get_out_dir(config_map, experiment)
 print(tfrecords_dir)
 
 # also get the hyperparameters

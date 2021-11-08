@@ -3,6 +3,7 @@ import os
 import sys
 
 import pandas as pd
+pd.set_option("display.max_columns", None)
 import numpy as np
 from tqdm import tqdm
 #tqdm.pandas()
@@ -31,16 +32,55 @@ def load_icsd(icsd_energies_file, icsd_structures_file):
     return icsd_df
 
 
-def load_hypothetical_structures(
-        relaxed_energies_file, structures_file):
-    hypo_df = pd.read_csv(relaxed_energies_file)
+def load_hypothetical_structures(relaxed_energies_file, 
+                                 structures_file, 
+                                 energy_col='energyperatom', 
+                                 set_vol_to=None, 
+                                 set_vol_to_relaxed=None,
+                                 set_lattice_to='orig', 
+                                 ):
+    """
+    *energy_col*: this script will use whatever column is specified here for training. 
+        If something other than 'energyperatom' is given, it will rename that column to 'energyperatom'
+    *set_vol_to_relaxed*: option to set the volume of the unrelaxed structures to match the relaxed volume.
+        Need to pass the path/to/relaxed_structures.json.gz
+    *set_lattice_to*: option to change the lattice of the structures. Current options: 'cubic'
+    """
+    # make sure the ID column is treated as a string
+    hypo_df = pd.read_csv(relaxed_energies_file, dtype={'id': str})
     structures = utils.load_structures_from_json(structures_file)
+
+    if set_vol_to_relaxed:
+        print("Setting the volume of the unrelaxed structures to match their corresponding relaxed structures")
+        rel_structures = loaded_datasets.get(set_vol_to_relaxed)
+        if rel_structures is None:
+            rel_structures = utils.load_structures_from_json(set_vol_to_relaxed)
+            loaded_datasets[set_vol_to_relaxed] = rel_structures
+
+    if set_lattice_to == 'cubic':
+        print(f"\tconverting hypothetical structures to '{set_lattice_to}'")
 
     def get_strc(strc_id):
         struc = structures.get(strc_id)
+        # need to apply the cubic lattice before other changes to the volume
+        # since the cubic lattice will change the volume as well
+        if set_lattice_to == 'cubic':
+            struc.lattice = struc.lattice.cubic(1.0)
+        # update the volume to match the relaxed structure
+        if set_vol_to_relaxed and struc is not None:
+            rel_struc = rel_structures.get(strc_id)
+            struc.scale_lattice(rel_struc.volume)
+        elif set_vol_to:
+            struc.scale_lattice(float(set_vol_to))
         return struc
 
     hypo_df['crystal'] = hypo_df.id.apply(get_strc)
+
+    if energy_col != 'energyperatom':
+        print(f"Renaming '{energy_col}' to 'energyperatom' in hypo_df")
+        if 'energyperatom' in hypo_df.columns:
+            hypo_df.drop('energyperatom', axis=1, inplace=True)
+        hypo_df.rename({energy_col: 'energyperatom'}, axis=1, inplace=True)
 
     return hypo_df
 
@@ -97,10 +137,21 @@ def load_datasets(config_map, experiment):
         curr_df = loaded_datasets.get(dataset_name)
         if dataset['hypothetical'] is True:
             if curr_df is None:
+                set_vol_to_relaxed = experiment.get('set_vol_to_relaxed')
+                if set_vol_to_relaxed:
+                    # also load the relaxed structures, and set the volume of the unrelaxed structures to match the relaxed
+                    set_vol_to_relaxed = config_map['datasets'][dataset['relaxed_dataset']]['structures_file']
+
                 curr_df = load_hypothetical_structures(
-                    dataset['relaxed_energies'], dataset['structures_file'])
+                    dataset['relaxed_energies'], dataset['structures_file'], 
+                    energy_col=dataset.get('energy_col', 'energyperatom'),
+                    set_vol_to=experiment.get('set_vol_to'),
+                    set_vol_to_relaxed=set_vol_to_relaxed,
+                    set_lattice_to=experiment['eval_settings'].get('hypo_lattice', 'orig'),
+                    )
                 # keep track of if these structures are relaxed or not
                 curr_df['relaxed'] = dataset['relaxed']
+
             hypo_df = pd.concat([hypo_df, curr_df])
         else:
             # treat this as an ICSD dataset
@@ -120,17 +171,16 @@ def load_datasets(config_map, experiment):
 
     # transform the structures to a different lattice if specified
     icsd_lattice = experiment['eval_settings'].get('icsd_lattice', 'orig')
-    hypo_lattice = experiment['eval_settings'].get('hypo_lattice', 'orig')
-    for latt in [icsd_lattice, hypo_lattice]:
+    for latt in [icsd_lattice]:
         if latt not in ['orig', 'cubic']:
             sys.exit(f"lattice: '{latt}' not yet implemented. Quitting")
 
     if icsd_lattice == 'cubic':
         print(f"\tconverting ICSD structures to '{icsd_lattice}'")
         icsd_df['crystal'] = icsd_df['crystal'].apply(apply_cubic)
-    if hypo_lattice == 'cubic':
-        print(f"\tconverting hypothetical structures to '{hypo_lattice}'")
-        hypo_df['crystal'] = hypo_df['crystal'].apply(apply_cubic)
+    #if hypo_lattice == 'cubic':
+    #    print(f"\tconverting hypothetical structures to '{hypo_lattice}'")
+    #    hypo_df['crystal'] = hypo_df['crystal'].apply(apply_cubic)
 
     return icsd_df, hypo_df
 
@@ -150,9 +200,25 @@ def setup_experiment(config_map, experiment, forced=False):
     test_file = os.path.join(out_dir, 'test.csv.gz')
     if not forced and os.path.isfile(test_file):
         print(f"Input files already exist for {out_dir}. Use --forced to overwrite (TODO)")
-        return
+        return out_dir
 
     icsd_df, hypo_df = load_datasets(config_map, experiment) 
+
+    if experiment.get('structures_to_use'):
+        # the key is the 'label' for these structures, the value is the filepath
+        key, strcs_file = list(experiment['structures_to_use'].items())[0]
+        strcs_to_use = set(list(pd.read_csv(strcs_file, squeeze=True).values))
+        print(f"{len(strcs_to_use)} structures to use for '{key}' read from {experiment['structures_to_use']}")
+        num_hypo = len(hypo_df)
+        hypo_df = hypo_df[hypo_df['id'].isin(strcs_to_use)]
+        print(f"\t{num_hypo} reduced to {len(hypo_df)}")
+
+    if experiment.get('remove_high_err'):
+        strcs_to_ignore = set(list(pd.read_csv(experiment['remove_high_err'], squeeze=True).values))
+        print(f"{len(strcs_to_ignore)} structures to ignore read from {experiment['remove_high_err']}")
+        num_hypo = len(hypo_df)
+        hypo_df = hypo_df[~hypo_df['id'].isin(strcs_to_ignore)]
+        print(f"\t{num_hypo} reduced to {len(hypo_df)}")
 
     eval_settings = experiment['eval_settings']
     random_state = eval_settings.get('seed')
@@ -166,8 +232,8 @@ def setup_experiment(config_map, experiment, forced=False):
     # if both the unrelaxed and relaxed versions are present, then evaluate on only the unrelaxed
     hypo_skip_eval_relaxed = False
     if 'relaxed' in hypo_df:
-        relaxed_state = hypo_df['relaxed']
-        if False in relaxed_state and True in relaxed_state:
+        relaxed_states = hypo_df['relaxed'].unique()
+        if False in relaxed_states and True in relaxed_states:
             hypo_skip_eval_relaxed = True
         
     for df, dataset_type in [(icsd_df, 'icsd'), (hypo_df, 'hypo')]:
@@ -245,13 +311,20 @@ def setup_experiment(config_map, experiment, forced=False):
     filename = os.path.join(out_dir, 'valid.tfrecord.gz')
     writer = tf.data.experimental.TFRecordWriter(filename, compression_type='GZIP')
     writer.write(serialized_valid_dataset)
-    
+
     # Save train, valid, and test datasets
     for split, split_name in [(train_df, 'train'),
                               (valid_df, 'valid'),
                               (test_df, 'test')]:
-        split[['comp_type','composition', 'id', 'energyperatom']].to_csv(
-            os.path.join(out_dir, f'{split_name}.csv.gz'), compression='gzip', index=False)
+        if 'comp_type' in split.columns:
+            split[['comp_type','composition', 'id', 'energyperatom']].to_csv(
+                os.path.join(out_dir, f'{split_name}.csv.gz'), compression='gzip', index=False)
+        else:
+            # for oqmd, the other columns aren't there
+            split[['id', 'energyperatom']].to_csv(
+                os.path.join(out_dir, f'{split_name}.csv.gz'), compression='gzip', index=False)
+
+    return out_dir
 
 
 if __name__ == '__main__':
