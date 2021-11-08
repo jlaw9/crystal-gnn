@@ -56,9 +56,11 @@ experiments:
     - datasets: ["icsd", "battery_relaxed"]
       eval_settings:
           icsd_lattice: ['orig']
-          hypo_lattice: ['orig', 'cubic']
+          #hypo_lattice: ['orig', 'cubic']
+          hypo_lattice: ['orig']
           icsd: [random_subset: 0.05]
-          hypo: [random_subset: 0.05, "leave_out_comp"]
+          #hypo: [random_subset: 0.05, "leave_out_comp"]
+          hypo: [random_subset: 0.05]
           # random seed to use for train/valid/test splits
           #seed: [1,2,3]
           seed: [1]
