@@ -4,28 +4,17 @@ datasets:
         hypothetical: False
         structures_file: "inputs/structures/icsd_structures.json.gz"
         energies: "inputs/structures/icsd_energies.csv"
-    battery_unrelaxed:
+    oqmd_unrelaxed:
         hypothetical: True
         relaxed: False
-        relaxed_dataset: "battery_relaxed"
-        structures_file: "inputs/structures/battery_unrelaxed_structures.json.gz"
-        relaxed_energies: "inputs/structures/battery_relaxed_energies.csv"
-    battery_relaxed:
+        relaxed_dataset: "oqmd_relaxed"
+        structures_file: "inputs/oqmd-structures/oqmdv1_4-unrelaxed-structures.json.gz"
+        relaxed_energies: "inputs/oqmd-structures/oqmdv1_4-relaxed-energies.csv"
+    oqmd_relaxed:
         hypothetical: True
         relaxed: True
-        structures_file: "inputs/structures/battery_relaxed_structures.json.gz"
-        relaxed_energies: "inputs/structures/battery_relaxed_energies.csv"
-    zintl_unrelaxed:
-        hypothetical: True
-        relaxed: False
-        relaxed_dataset: "zintl_relaxed"
-        structures_file: "inputs/structures/zintl_unrelaxed_structures.json.gz"
-        relaxed_energies: "inputs/structures/zintl_relaxed_energies.csv"
-    zintl_relaxed:
-        hypothetical: True
-        relaxed: True
-        structures_file: "inputs/structures/zintl_relaxed_structures.json.gz"
-        relaxed_energies: "inputs/structures/zintl_relaxed_energies.csv"
+        structures_file: "inputs/oqmd-structures/oqmdv1_4-relaxed-structures.json.gz"
+        relaxed_energies: "inputs/oqmd-structures/oqmdv1_4-relaxed-energies.csv"
 
 # structure of outputs:
 # <output_dir>/
@@ -53,14 +42,14 @@ output_dir: "outputs"
 #     e.g., seed: [1,2,3,4,5]
 experiments:
 
-    - datasets: ["icsd", "battery_unrelaxed"]
+    # our ICSD used different DFT settings
+    #- datasets: ["icsd", "oqmd_relaxed"]
+    - datasets: ["oqmd_relaxed"]
       eval_settings:
           icsd_lattice: ['orig']
-          #hypo_lattice: ['orig', 'cubic']
-          hypo_lattice: ['orig']
+          hypo_lattice: ['orig', 'cubic']
           icsd: [random_subset: 0.05]
-          #hypo: [random_subset: 0.05, "leave_out_comp"]
-          hypo: [random_subset: 0.05]
+          hypo: [random_subset: 0.25]
           # random seed to use for train/valid/test splits
           #seed: [1,2,3]
           seed: [1]

@@ -53,16 +53,67 @@ output_dir: "outputs"
 #     e.g., seed: [1,2,3,4,5]
 experiments:
 
-    - datasets: ["icsd", "battery_unrelaxed"]
+
+#    - datasets: ["battery_relaxed"]
+#      structures_to_use: 
+#          cos_sim0_99: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_99.txt"
+#      eval_settings:
+#          icsd_lattice: ['orig']
+#          hypo_lattice: ['orig']
+#          icsd: [random_subset: 0.05]
+#          hypo: [random_subset: 0.05]
+#          # random seed to use for train/valid/test splits
+#          seed: [1]
+#
+#    - datasets: ["battery_relaxed"]
+#      structures_to_use: 
+#          cos_sim0_95: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_95.txt"
+#      eval_settings:
+#          icsd_lattice: ['orig']
+#          hypo_lattice: ['orig']
+#          icsd: [random_subset: 0.05]
+#          hypo: [random_subset: 0.05]
+#          # random seed to use for train/valid/test splits
+#          seed: [1]
+
+    - datasets: ["battery_relaxed"]
+      structures_to_use: 
+          cos_sim0_9: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_9.txt"
       eval_settings:
           icsd_lattice: ['orig']
-          #hypo_lattice: ['orig', 'cubic']
           hypo_lattice: ['orig']
           icsd: [random_subset: 0.05]
-          #hypo: [random_subset: 0.05, "leave_out_comp"]
           hypo: [random_subset: 0.05]
-          # random seed to use for train/valid/test splits
-          #seed: [1,2,3]
+          seed: [1]
+
+    - datasets: ["battery_relaxed"]
+      structures_to_use: 
+          cos_sim0_8: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_8.txt"
+      eval_settings:
+          icsd_lattice: ['orig']
+          hypo_lattice: ['orig']
+          icsd: [random_subset: 0.05]
+          hypo: [random_subset: 0.05]
+          seed: [1]
+
+    - datasets: ["battery_relaxed"]
+      structures_to_use: 
+          cos_sim0_6: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_6.txt"
+      eval_settings:
+          icsd_lattice: ['orig']
+          hypo_lattice: ['orig']
+          icsd: [random_subset: 0.05]
+          hypo: [random_subset: 0.05]
+          seed: [1]
+
+    - datasets: ["battery_relaxed"]
+      structures_to_use: 
+          cos_sim0_4: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_4.txt"
+      eval_settings:
+          icsd_lattice: ['orig']
+          hypo_lattice: ['orig']
+          icsd: [random_subset: 0.05]
+          hypo: [random_subset: 0.05]
           seed: [1]
 
 
@@ -81,3 +132,5 @@ hyperparameters:
     # model_params
     embed_dimension: 256   # typical embedding dimensions= 32, 64, 128, 256
     num_messages: 6        # typical number of message passing blocks= 3-6
+
+

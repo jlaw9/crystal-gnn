@@ -1,3 +1,4 @@
+# GOAL: Test if setting the volume of the unrelaxed structure to the relaxed structure will help
 
 datasets:
     icsd:
@@ -14,6 +15,17 @@ datasets:
         hypothetical: True
         relaxed: True
         structures_file: "inputs/structures/battery_relaxed_structures.json.gz"
+        relaxed_energies: "inputs/structures/battery_relaxed_energies.csv"
+    battery_unrelaxed_norm:
+        hypothetical: True
+        relaxed: False
+        relaxed_dataset: "battery_relaxed_norm"
+        structures_file: "inputs/structures/battery_unrelaxed_norm_strcs.json.gz"
+        relaxed_energies: "inputs/structures/battery_relaxed_energies.csv"
+    battery_relaxed_norm:
+        hypothetical: True
+        relaxed: True
+        structures_file: "inputs/structures/battery_relaxed_norm_strcs.json.gz"
         relaxed_energies: "inputs/structures/battery_relaxed_energies.csv"
     zintl_unrelaxed:
         hypothetical: True
@@ -53,16 +65,72 @@ output_dir: "outputs"
 #     e.g., seed: [1,2,3,4,5]
 experiments:
 
-    - datasets: ["icsd", "battery_unrelaxed"]
+    - datasets: ["icsd", "battery_unrelaxed_norm"]
+      set_vol_to_relaxed: True
+      structures_to_use: 
+          cos_sim0_95: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_95.txt"
       eval_settings:
           icsd_lattice: ['orig']
-          #hypo_lattice: ['orig', 'cubic']
           hypo_lattice: ['orig']
           icsd: [random_subset: 0.05]
-          #hypo: [random_subset: 0.05, "leave_out_comp"]
           hypo: [random_subset: 0.05]
           # random seed to use for train/valid/test splits
-          #seed: [1,2,3]
+          seed: [1]
+
+    - datasets: ["battery_unrelaxed_norm"]
+      set_vol_to_relaxed: True
+      structures_to_use: 
+          cos_sim0_95: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_95.txt"
+      eval_settings:
+          icsd_lattice: ['orig']
+          hypo_lattice: ['orig']
+          icsd: [random_subset: 0.05]
+          hypo: [random_subset: 0.05]
+          # random seed to use for train/valid/test splits
+          seed: [1]
+
+    - datasets: ["battery_unrelaxed_norm"]
+      set_vol_to_relaxed: True
+      structures_to_use: 
+          cos_sim0_9: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_9.txt"
+      eval_settings:
+          icsd_lattice: ['orig']
+          hypo_lattice: ['orig']
+          icsd: [random_subset: 0.05]
+          hypo: [random_subset: 0.05]
+          seed: [1]
+
+    - datasets: ["battery_unrelaxed_norm"]
+      set_vol_to_relaxed: True
+      structures_to_use: 
+          cos_sim0_8: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_8.txt"
+      eval_settings:
+          icsd_lattice: ['orig']
+          hypo_lattice: ['orig']
+          icsd: [random_subset: 0.05]
+          hypo: [random_subset: 0.05]
+          seed: [1]
+
+    - datasets: ["battery_unrelaxed_norm"]
+      set_vol_to_relaxed: True
+      structures_to_use: 
+          cos_sim0_6: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_6.txt"
+      eval_settings:
+          icsd_lattice: ['orig']
+          hypo_lattice: ['orig']
+          icsd: [random_subset: 0.05]
+          hypo: [random_subset: 0.05]
+          seed: [1]
+
+    - datasets: ["battery_unrelaxed_norm"]
+      set_vol_to_relaxed: True
+      structures_to_use: 
+          cos_sim0_4: "inputs/structures/battery_cutoffs/cos_sim_cutoff0_4.txt"
+      eval_settings:
+          icsd_lattice: ['orig']
+          hypo_lattice: ['orig']
+          icsd: [random_subset: 0.05]
+          hypo: [random_subset: 0.05]
           seed: [1]
 
 
