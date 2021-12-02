@@ -13,6 +13,7 @@ import preprocess_crystals as preprocess_crystals
 def main(config_map, 
          valid_split_all_data=None, 
          submit=False, 
+         debug=False,
          forced=False):
     experiments = utils.get_experiments(config_map['experiments'])
     for experiment in experiments:
@@ -41,7 +42,8 @@ def main(config_map,
             run_experiment(config_map, 
                            out_dir, 
                            exp_config_map, 
-                           submit=submit, 
+                           submit=submit,
+                           debug=debug,
                            forced=forced)
 
 
@@ -50,6 +52,7 @@ def run_experiment(config_map,
                    exp_config_map, 
                    valid_split_all_data=None, 
                    submit=False, 
+                   debug=False,
                    forced=False):
     params = utils.check_default_hyperparams(config_map['hyperparameters'])
     model_dir = utils.get_hyperparam_dir(out_dir, params)
@@ -76,6 +79,7 @@ def run_experiment(config_map,
             log_file=f"{model_dir}/log.out",
             err_file=f"{model_dir}/err.out",
             email_username=os.environ['USER'],
+            debug=debug,
             )
 
     # now submit to the queue
@@ -89,10 +93,13 @@ def write_submit_script(out_file,
                         name="test-crystals",
                         log_file="",
                         err_file="",
-                        email_username=os.environ['USER']):
+                        email_username=os.environ['USER'],
+                        debug=False,
+                        ):
     out_str = f"""#!/bin/bash
 #SBATCH --account=rlmolecule
-#SBATCH --time=10:00:00
+{"#SBATCH --partition=debug" if debug else ""}
+#SBATCH --time={"10:00:00" if not debug else "1:00:00"}
 #SBATCH --job-name={name}
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:2
@@ -127,6 +134,8 @@ if __name__ == '__main__':
                              'so that all structures are left out of training at some point')
     parser.add_argument('--submit', action='store_true', default=False,
                         help='Submit to the HPC envrionment using sbatch')
+    parser.add_argument('--debug', action='store_true', default=False,
+                        help='Submit job to debug queue')
     # parser.add_argument('--hypo-structures', type=str, action='append',
     #                    help='path/to/hypothetical-structures.json.gz. Can specify multiple times')
 
@@ -134,5 +143,6 @@ if __name__ == '__main__':
 
     config_map = utils.load_config_file(args.config_file)
     main(config_map, 
-         submit=args.submit, 
-         valid_split_all_data=args.valid_split_all_data)
+         valid_split_all_data=args.valid_split_all_data,
+         submit=args.submit, debug=args.debug,
+         )

@@ -45,16 +45,13 @@ print(params)
 model_dir = utils.get_hyperparam_dir(tfrecords_dir, params)
 print(model_dir)
 
-#dataset_name = "icsd_zintl"
-#tfrecords_dir = f'tfrecords_{dataset_name}'
-
 preprocessor.from_json(os.path.join(tfrecords_dir, 'preprocessor.json'))
 
 # Build the tf.data input pipeline
 def parse_example(example):
     parsed = tf.io.parse_single_example(example, features={
         **preprocessor.tfrecord_features,
-        **{'energyperatom': tf.io.FixedLenFeature([], dtype=tf.float32)}})
+        **{'feature_col': tf.io.FixedLenFeature([], dtype=tf.float32)}})
 
     # All of the array preprocessor features are serialized integer arrays
     for key, val in preprocessor.tfrecord_features.items():
@@ -63,9 +60,9 @@ def parse_example(example):
                 parsed[key], out_type=preprocessor.output_types[key])
     
     # Pop out the prediction target from the stored dictionary as a seperate input
-    energyperatom = parsed.pop('energyperatom')
+    feature_col = parsed.pop('feature_col')
     
-    return parsed, energyperatom
+    return parsed, feature_col
 
 # Here, we have to add the prediction target padding onto the input padding
 batch_size = params['batch_size']
@@ -187,8 +184,10 @@ atom_state = layers.Dense(1)(atom_state)
 atom_state = layers.Add()([atom_state, atom_mean])
 
 out = tf.keras.layers.GlobalAveragePooling1D()(atom_state)
-
 model = tf.keras.Model(input_tensors, [out])
+## TODO Also track the distance from the unrelaxed to the relaxed state
+# out_dist = tf.keras.layers.GlobalAveragePooling1D()(atom_state)
+# model = tf.keras.Model(input_tensors, [out, out_dist])
 
 # TODO change to the size of the dataset
 STEPS_PER_EPOCH = math.ceil(25633 / batch_size)  # number of training examples
@@ -204,8 +203,12 @@ wd_schedule = tf.keras.optimizers.schedules.InverseTimeDecay(1E-5,
   staircase=False)
 
 optimizer = tfa.optimizers.AdamW(learning_rate=lr_schedule, weight_decay=wd_schedule, global_clipnorm=1.)
+#optimizer = tfa.optimizers.AdamW(learning_rate=lr_schedule, weight_decay=wd_schedule)
+loss = 'mae'
+if experiment.get('feature_bins'):
+    loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-model.compile(loss='mae', optimizer=optimizer)
+model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
 
 # Make a backup of the job submission script
 shutil.copy(__file__, model_dir)

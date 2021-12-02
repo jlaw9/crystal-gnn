@@ -34,14 +34,13 @@ def load_icsd(icsd_energies_file, icsd_structures_file):
 
 def load_hypothetical_structures(relaxed_energies_file, 
                                  structures_file, 
-                                 energy_col='energyperatom', 
+                                 feature_col='energyperatom', 
                                  set_vol_to=None, 
                                  set_vol_to_relaxed=None,
                                  set_lattice_to='orig', 
                                  ):
     """
-    *energy_col*: this script will use whatever column is specified here for training. 
-        If something other than 'energyperatom' is given, it will rename that column to 'energyperatom'
+    *feature_col*: this script will use whatever column is specified here for training, and label it as 'feature_col'. 
     *set_vol_to_relaxed*: option to set the volume of the unrelaxed structures to match the relaxed volume.
         Need to pass the path/to/relaxed_structures.json.gz
     *set_lattice_to*: option to change the lattice of the structures. Current options: 'cubic'
@@ -76,11 +75,12 @@ def load_hypothetical_structures(relaxed_energies_file,
 
     hypo_df['crystal'] = hypo_df.id.apply(get_strc)
 
-    if energy_col != 'energyperatom':
-        print(f"Renaming '{energy_col}' to 'energyperatom' in hypo_df")
-        if 'energyperatom' in hypo_df.columns:
-            hypo_df.drop('energyperatom', axis=1, inplace=True)
-        hypo_df.rename({energy_col: 'energyperatom'}, axis=1, inplace=True)
+    hypo_df['feature_col'] = hypo_df[feature_col]
+    #if feature_col != 'energyperatom':
+    #    print(f"Renaming '{feature_col}' to 'energyperatom' in hypo_df")
+    #    if 'energyperatom' in hypo_df.columns:
+    #        hypo_df.drop('energyperatom', axis=1, inplace=True)
+    #    hypo_df.rename({feature_col: 'energyperatom'}, axis=1, inplace=True)
 
     return hypo_df
 
@@ -144,7 +144,7 @@ def load_datasets(config_map, experiment):
 
                 curr_df = load_hypothetical_structures(
                     dataset['relaxed_energies'], dataset['structures_file'], 
-                    energy_col=dataset.get('energy_col', 'energyperatom'),
+                    feature_col=dataset.get('feature_col', 'energyperatom'),
                     set_vol_to=experiment.get('set_vol_to'),
                     set_vol_to_relaxed=set_vol_to_relaxed,
                     set_lattice_to=experiment['eval_settings'].get('hypo_lattice', 'orig'),
@@ -203,6 +203,12 @@ def setup_experiment(config_map, experiment, forced=False):
         return out_dir
 
     icsd_df, hypo_df = load_datasets(config_map, experiment) 
+
+    if experiment.get('feature_bins'):
+        # update the main feature to be categorical rather than continuous
+        print(f"splitting the features into {len(experiment['feature_bins'])-1} bins: {experiment['feature_bins']}")
+        hypo_df['feature_col'] = np.digitize(hypo_df['feature_col'].values, experiment['feature_bins']) + 1
+        print(hypo_df.head(2))
 
     if experiment.get('structures_to_use'):
         # the key is the 'label' for these structures, the value is the filepath
@@ -274,7 +280,7 @@ def setup_experiment(config_map, experiment, forced=False):
         """
         for i, row in tqdm(df.iterrows(), total=len(df)):
             input_dict = preprocessor.construct_feature_matrices(row.crystal, train=train)
-            input_dict['energyperatom'] = float(row.energyperatom)
+            input_dict['feature_col'] = float(row.feature_col)
             #input_dict['a'] = float(row.a)
             #input_dict['b'] = float(row.b)
             #input_dict['c'] = float(row.c)
@@ -316,13 +322,8 @@ def setup_experiment(config_map, experiment, forced=False):
     for split, split_name in [(train_df, 'train'),
                               (valid_df, 'valid'),
                               (test_df, 'test')]:
-        if 'comp_type' in split.columns:
-            split[['comp_type','composition', 'id', 'energyperatom']].to_csv(
-                os.path.join(out_dir, f'{split_name}.csv.gz'), compression='gzip', index=False)
-        else:
-            # for oqmd, the other columns aren't there
-            split[['id', 'energyperatom']].to_csv(
-                os.path.join(out_dir, f'{split_name}.csv.gz'), compression='gzip', index=False)
+        split.drop(['crystal', 'relaxed'], axis=1).to_csv(
+            os.path.join(out_dir, f'{split_name}.csv.gz'), compression='gzip', index=False)
 
     return out_dir
 
